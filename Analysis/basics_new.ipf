@@ -1081,3 +1081,12 @@ Function GetFreeMemory()
 
     return freeMem / 1024 / 1024 / 1024
 End
+
+macro bench()
+	fd_initGlobalAWG()
+	variable /g sc_abortsweep, sc_abortnosave, sc_pause
+	make/o howslow; display howslow
+	scanfastDAC(-1000,1000,"5",sweeprate=100, use_AWG=0,nosave=1)
+	print "free Memory:",  getfreememory()
+
+endmacro
