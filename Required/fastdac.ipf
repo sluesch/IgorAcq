@@ -203,7 +203,7 @@ function getFADCchannel(channel, [len_avg])
 	// Instead of just grabbing one single datapoint which is susceptible to high f noise, this averages data over len_avg and returns a single value
 	variable channel, len_avg
 	
-	len_avg = paramisdefault(len_avg) ? 0.05 : len_avg
+	len_avg = paramisdefault(len_avg) ? 0.5 : len_avg
 	// Get the fd ID based on the ADC channel number
 	string fdIDname = stringfromlist(0, scc_getDeviceIDs(adc=1, channels=num2str(channel)))
 	
@@ -1819,8 +1819,8 @@ function/s fd_getAWGwave(wave_num)
 
    string wn = ""
    sprintf wn, "fdAW_%d", wave_num
-   wave AWG_wave = $wn
-   if(!waveExists(AWG_wave))
+  //wave AWG_wave = $wn
+   if(!waveExists($wn))
       make/o/n=(0,2) $wn
    endif
    return wn
@@ -2169,6 +2169,7 @@ function fd_initGlobalAWG()
 	S.InstrIDs   = "" 
 	
 	fd_setGlobalAWG(S)
+	make/o/s/n=(2, 2) fdaw_0
 end
 
 

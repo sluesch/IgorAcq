@@ -383,7 +383,9 @@ function ScanFastDAC(start, fin, channels, [numptsx, sweeprate, delay, ramprate,
 		
 	// Main measurement loop
 	int j, d = 1
-	for (j=0; j<S.numptsy; j++)
+	//for (j=0; j<S.numptsy; j++)
+		for (j=S.numptsy-1; j<S.numptsy; j++)
+
 		S.direction = d  // Will determine direction of scan in fd_Record_Values
 
 		// Interlaced Scan Stuff

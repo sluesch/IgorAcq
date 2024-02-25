@@ -350,7 +350,7 @@ function SaveToHDF(S, [additional_wavenames])
 
 	// Save ScanWaves (e.g. x_array, y_array etc)
 	if(S.using_fastdac)
-		nvar sc_resampleFreqCheckFadc
+		nvar sc_resampleFreqCheckFadc // I have to set this to something, but it seems to be a bug that needs to be fixed
 		saveScanWaves(calc_hdf5_id, S, sc_resampleFreqCheckFadc)  // Needs a different x_array size if filtered
 		if (Sc_saveRawFadc == 1)
 			saveScanWaves(raw_hdf5_id, S, 0)

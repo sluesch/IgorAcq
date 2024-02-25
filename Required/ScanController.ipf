@@ -1177,14 +1177,18 @@ function initializeScan(S, [init_graphs, y_label])
 //    sc_OpenInstrConnections(0)
 
     // Make sure waves exist to store data
+
     sci_initializeWaves(S)
 
+
     // Set up graphs to display recorded data
+
     if (init_graphs)
 	    string activeGraphs
 	    activeGraphs = scg_initializeGraphs(S, y_label = y_label)
 	    scg_arrangeWindows(activeGraphs)
 	 endif
+	
 
     // Open Abort window
     scg_openAbortWindow()
@@ -1231,10 +1235,11 @@ function sci_initializeWaves(S)  // TODO: rename
 	     	endif
 	 
           sci_init1DWave(wn, numpts, S.startx, S.finx)
-            
+        
           if (S.is2d == 1)
           	sci_init2DWave(wn+"_2d", numpts, S.startx, S.finx, S.numptsy, S.starty, S.finy)
           endif
+     
           
 			
 			//initializing for hot/cold waves, not sure if i need to, if we are just saving in the end?          
@@ -1329,7 +1334,7 @@ function sci_init2DWave(wn, numptsx, startx, finx, numptsy, starty, finy)
 	   	abort cmd
    endif
     
-    make/O/n=(numptsx, numptsy) $wn = NaN  // TODO: can put in a cmd and execute if necessary
+    make/O/n=(numptsx, numptsy) $wn = enoise(1) // TODO: can put in a cmd and execute if necessary
     cmd = "setscale/I x " + num2str(startx) + ", " + num2str(finx) + ", " + wn; execute(cmd)
 	cmd = "setscale/I y " + num2str(starty) + ", " + num2str(finy) + ", " + wn; execute(cmd)
 end
@@ -4906,7 +4911,7 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 	
 end
 
-function scfd_RecordBuffer(S, rowNum, totalByteReturn, [record_only, skip_raw2calc])
+function scfd_RecordBuffer1(S, rowNum, totalByteReturn, [record_only, skip_raw2calc])
 	// Returns whether recording entered into panic_mode during sweep
    struct ScanVars &S
    variable rowNum, totalByteReturn
@@ -4920,7 +4925,7 @@ function scfd_RecordBuffer(S, rowNum, totalByteReturn, [record_only, skip_raw2ca
    // hold incoming data chunks in string and distribute to data waves
    string buffer = ""
    variable bytes_read = 0, totaldump = 0 
-   variable saveBuffer = 3000 // Allow getting up to 1000 bytes behind. (Note: Buffer size is 4096 bytes and cannot be changed in Igor)
+   variable saveBuffer = 1000 // Allow getting up to 1000 bytes behind. (Note: Buffer size is 4096 bytes and cannot be changed in Igor)
    variable bufferDumpStart = stopMSTimer(-2) 
 
    variable bytesSec = roundNum(2*S.samplingFreq,0)
@@ -4929,62 +4934,50 @@ function scfd_RecordBuffer(S, rowNum, totalByteReturn, [record_only, skip_raw2ca
    
    variable panic_mode = record_only  // If Igor gets behind on reading at any point, it will go into panic mode and focus all efforts on clearing buffer.
    variable expected_bytes_in_buffer = 0 // For storing how many bytes are expected to be waiting in buffer
-   	variable le=floor(totalByteReturn/read_chunk);
-	make/o/N=(le) howslow
 //print read_chunk
-	int i, counter
-	counter=0
+	int i
 	string fdIDname
 	nvar sc_plotraw
-
  	do
  	   for(i=0; i<itemsinlist(S.instrIDs); i++)
- 	
  	   	fdIDname = stringfromlist(i,S.instrIDs)
  			nvar fdID = $fdIDname
- 			
- 			//expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read) 
-
  	      		
-    		scfd_readChunk(fdID, read_chunk, buffer)  // puts data into buffer   	
+    		scfd_readChunk(fdID, read_chunk, buffer)  // puts data into buffer
     		scfd_distributeData1(buffer, S, bytes_read, totalByteReturn, read_chunk, rowNum, fdIDname = fdIDname)
     		scfd_checkSweepstate(fdID)
  	      
-    		bytes_read += read_chunk 
-    		howslow[counter]= scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read) 
-			counter=counter+1 
-			doupdate
-
-//    		if(!panic_mode && expected_bytes_in_buffer < saveBuffer)  // if we aren't too far behind then update Raw 1D graphs
-//    		
+    		bytes_read += read_chunk      
+    		expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)      
+    		if(!panic_mode && expected_bytes_in_buffer < saveBuffer)  // if we aren't too far behind then update Raw 1D graphs
+    		
 //       		if(!sc_plotRaw)
 //       			scfd_raw2CalcQuickDistribute()
 //       		endif
-//       		
-//       		if (!skip_raw2calc) // Vahid's change which is quite similar to Tim's change commentated above. 
-//					scfd_raw2CalcQuickDistribute()
-//				endif       		
-//       		//scg_updateFrequentGraphs() 
-//     			//expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)  // Basically checking how long graph updates took
-//     			
-//				if(expected_bytes_in_buffer > 5000)
-//       			printf "ERROR[scfd_RecordBuffer]: After updating graphs, buffer is expected to overflow... Expected buffer size = %d (max = 4096). Bytes read so far = %d\r" expected_bytes_in_buffer, bytes_read
-//       		elseif (expected_bytes_in_buffer > 5000)
-//					printf "WARNING[scfd_RecordBuffer]: Last graph update resulted in buffer becoming close to full (%d of 4096 bytes). Entering panic_mode (no more graph updates)\r", expected_bytes_in_buffer
-//					panic_mode = 1         
-//       		endif
-//			else
-//				if (expected_bytes_in_buffer > 5000)
-//					printf "DEBUGGING: getting behind: Expecting %d bytes in buffer (max 4096)\r" expected_bytes_in_buffer		
-//					if (panic_mode == 0)
-//						panic_mode = 1
-//						printf "WARNING[scfd_RecordBuffer]: Getting behind on reading buffer, entering panic mode (no more graph updates until end of sweep)Expecting %d bytes in buffer (max 4096)\r"  expected_bytes_in_buffer				
-//					endif			
-//				endif
-//
-//			endif
+       		
+       		if (!skip_raw2calc) // Vahid's change which is quite similar to Tim's change commentated above. 
+					scfd_raw2CalcQuickDistribute()
+				endif
+       		
+       		scg_updateFrequentGraphs() 
+     			expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)  // Basically checking how long graph updates took
+     			
+				if(expected_bytes_in_buffer > 4096)
+       			printf "ERROR[scfd_RecordBuffer]: After updating graphs, buffer is expected to overflow... Expected buffer size = %d (max = 4096). Bytes read so far = %d\r" expected_bytes_in_buffer, bytes_read
+       		elseif (expected_bytes_in_buffer > 3000)
+					printf "WARNING[scfd_RecordBuffer]: Last graph update resulted in buffer becoming close to full (%d of 4096 bytes). Entering panic_mode (no more graph updates)\r", expected_bytes_in_buffer
+					panic_mode = 1         
+       		endif
+			else
+				if (expected_bytes_in_buffer > 3500)
+					printf "DEBUGGING: getting behind: Expecting %d bytes in buffer (max 4096)\r" expected_bytes_in_buffer		
+					if (panic_mode == 0)
+						panic_mode = 1
+						printf "WARNING[scfd_RecordBuffer]: Getting behind on reading buffer, entering panic mode (no more graph updates until end of sweep)Expecting %d bytes in buffer (max 4096)\r"  expected_bytes_in_buffer				
+					endif			
+				endif
 
-
+			endif
 			
 			if(i != itemsinlist(S.instrIDs)-1)
 				bytes_read -= read_chunk
@@ -5030,7 +5023,7 @@ function scfd_getReadChunkSize(numADCs, numpts, bytesSec, totalByteReturn)
   // Returns the size of chunks that should be read at a time
   variable numADCs, numpts, bytesSec, totalByteReturn
 
-  variable read_duration = 0.25  // Make readchunk s.t. it nominally take this time to fill
+  variable read_duration = 0.5  // Make readchunk s.t. it nominally take this time to fill
   variable chunksize = (round(bytesSec*read_duration) - mod(round(bytesSec*read_duration),numADCs*2))  
 
   variable read_chunk=0
@@ -5072,7 +5065,9 @@ function scfd_raw2CalcQuickDistribute()
         calc_string = ReplaceString(rwn, calc_string, "sc_tempwave")  // Replace the raw wave name with the temporary wave name in the calc function
         execute("sc_tempwave = "+calc_string)  // Execute the calc function
 
-        duplicate /o sc_tempwave $cwn  // Duplicate the temporary wave to the calc wave
+        //duplicate /o sc_tempwave $cwn  // Duplicate the temporary wave to the calc wave
+        FDecimateXPosStd(sc_tempwave, cwn, 30, 2, 1)
+
     endfor
 end
 
