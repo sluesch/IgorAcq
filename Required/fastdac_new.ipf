@@ -4,6 +4,11 @@
 
 /// new fastDAC code, implementing Ovi's API
 
+////////////////////
+//// Connection ////
+////////////////////
+
+
 function openFastDACconnection(IDname, http_address, [verbose])
 	// open/test a connection to the LS37X RPi interface written by Ovi
 	//      the whole thing _should_ work for LS370 and LS372
@@ -70,6 +75,7 @@ function openMultipleFDACs(portnums, [verbose])
 
 end
 
+
 function scf_addFDinfos(instrID,visa_address,numDACCh,numADCCh)  
 	// Puts FastDAC information into global sc_fdackeys which is a list of such entries for each connected FastDAC
 	string instrID, visa_address
@@ -129,8 +135,8 @@ function initFastDAC()
 	variable/g num_fdacs = 0
 	if(oldinit == -1)
 		string speeds = "372;2538;6061;12195"
-		string/g sc_fadcSpeed1=speeds,sc_fadcSpeed2=speeds,sc_fadcSpeed3=speeds
-		string/g sc_fadcSpeed4=speeds,sc_fadcSpeed5=speeds,sc_fadcSpeed6=speeds
+		string/g sc_fadcSpeed1=speeds//sc_fadcSpeed2=speeds,sc_fadcSpeed3=speeds
+		//string/g sc_fadcSpeed4=speeds,sc_fadcSpeed5=speeds,sc_fadcSpeed6=speeds
 	endif
 
 	// create GUI window
@@ -372,4 +378,18 @@ function scfw_SetGUIinteraction(numDevices)
 			endif
 	endswitch
 end
+
+//function getFADCmeasureFreq(instrID)
+//	// Calculates measurement frequency as sampleFreq/numadc 
+//	variable instrID
+//	
+//	svar sc_fdackeys	
+//	variable numadc, samplefreq
+//	numadc = scf_getNumRecordedADCs() 
+//	if (numadc == 0)
+//		numadc = 1
+//	endif
+//	samplefreq = getFADCspeed(instrID)
+//	return samplefreq/numadc
+//end
 
