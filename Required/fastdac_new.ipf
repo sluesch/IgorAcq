@@ -9,7 +9,7 @@
 ////////////////////
 
 
-function openFastDACconnection(IDname, http_address, [verbose])
+function openFastDAC(IDname, portnum [verbose])
 	// open/test a connection to the LS37X RPi interface written by Ovi
 	//      the whole thing _should_ work for LS370 and LS372
 	// instrID is the name of the global variable that will be used for communication
@@ -19,8 +19,12 @@ function openFastDACconnection(IDname, http_address, [verbose])
 	// verbose=0 will not print any information about the connection
 
 
-	string IDname, http_address
+	string IDname
+	string portnum
 	variable verbose
+	
+	string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
+
 
 	if(paramisdefault(verbose))
 		verbose=1
@@ -33,7 +37,7 @@ function openFastDACconnection(IDname, http_address, [verbose])
 	string response = ""
 
 	openHTTPinstr(comm, verbose=verbose)  // Sets svar (instrID) = url
-	scf_addFDinfos(IDname,http_address,8,4)
+	//scf_addFDinfos(IDname,http_address,8,4)
 
 	if (verbose==1)
 		response=getHTTP(http_address,"idn","");
@@ -42,38 +46,29 @@ function openFastDACconnection(IDname, http_address, [verbose])
 end
 
 
-function getFADCChannelSingle(int channel) // Units: mV
-	//IDname is url of API
-	svar fd
-	string	response=getHTTP(fd,"get-adc/"+num2str(channel),"");
-	string adc
-	adc=getjsonvalue(response,"value")
-	return str2num(adc)
-
-end
 
 
-function openMultipleFDACs(portnums, [verbose])
-	// This function is added to ease opening up multiple fastDAC connections in order
-	// It assumes the default options for verbose, numDACCh, numADCCh, and optical,
-	// The values can be found in the function openfastDACconnection()
-	// it will create the variables fd1,fd2,fd3.......
-	// it also reorders the list seen in the FastDacWindow because sc_fdackeys is killed everytime
-	//  	implying if the order changes -> the channels in the GUI will represent the new order.
-	
-	string portnums
-	variable verbose
-	
-	killstrings /z sc_fdackeys
-	
-	int i
-	for(i=0;i<itemsinlist(portnums, ",");i++)	
-		string instrID      = "fd" + num2str(i+1)
-		string http_address = "http://lcmi-docs.qdev-h101.lab:"+ removewhitespace(stringfromlist(i,portnums, ","))+"/api/v1/"
-		openFastDACconnection(instrID, http_address, verbose=verbose)
-	endfor
 
-end
+//function openMultipleFDACs(portnum, [verbose])
+//	// This function is added to ease opening up multiple fastDAC connections in order
+//	// It assumes the default options for verbose, numDACCh, numADCCh, and optical,
+//	// The values can be found in the function openfastDACconnection()
+//	// it will create the variables fd1,fd2,fd3.......
+//	// it also reorders the list seen in the FastDacWindow because sc_fdackeys is killed everytime
+//	//  	implying if the order changes -> the channels in the GUI will represent the new order.
+//	
+//	string portnum
+//	variable verbose
+//	
+//	killstrings /z sc_fdackeys
+//	
+//
+//		string instrID      = "fd" 
+//		string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
+//		openFastDACconnection(instrID, http_address, verbose=verbose)
+//	
+//
+//end
 
 
 function scf_addFDinfos(instrID,visa_address,numDACCh,numADCCh)  
@@ -109,44 +104,26 @@ end
 
 
 function initFastDAC()
-	// use the key:value list "sc_fdackeys" to figure out the correct number of
-	// DAC/ADC channels to use. "sc_fdackeys" is created when calling "openFastDACconnection".
-	svar sc_fdackeys
-	if(!svar_exists(sc_fdackeys))
-		print("[ERROR] \"initFastDAC\": No devices found! Connections to fastDACs need to be made first using openFastDACconnection(...)")
-		abort
-	endif
+wave/t ADC_channel, DAC_channel, DAC_label
+
 
 	// hardware limit (mV)
-	variable/g fdac_limit = 10000
-
-	variable i=0, numDevices = str2num(stringbykey("numDevices",sc_fdackeys,":",","))
-	variable numDACCh=0, numADCCh=0
-	for(i=0;i<numDevices+1;i+=1)
-		if(cmpstr(stringbykey("name"+num2istr(i+1),sc_fdackeys,":",","),"")!=0)
-			numDACCh += str2num(stringbykey("numDACCh"+num2istr(i+1),sc_fdackeys,":",","))
-			numADCCh += str2num(stringbykey("numADCCh"+num2istr(i+1),sc_fdackeys,":",","))
-		endif
-	endfor
-
+	variable i=0, numDevices = dimsize(ADC_channel,0)/4
+	variable numDACCh=dimsize(DAC_channel,0), numADCCh=numDACch/2;
+	
 	// create waves to hold control info
 	variable oldinit = scfw_fdacCheckForOldInit(numDACCh,numADCCh)
-
-	variable/g num_fdacs = 0
-	if(oldinit == -1)
-		string speeds = "372;2538;6061;12195"
-		string/g sc_fadcSpeed1=speeds//sc_fadcSpeed2=speeds,sc_fadcSpeed3=speeds
-		//string/g sc_fadcSpeed4=speeds,sc_fadcSpeed5=speeds,sc_fadcSpeed6=speeds
-	endif
 
 	// create GUI window
 	string cmd = ""
 	//variable winsize_l,winsize_r,winsize_t,winsize_b
 	getwindow/z ScanControllerFastDAC wsizeRM
 	killwindow/z ScanControllerFastDAC
-	sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
-	execute(cmd)
-	scfw_SetGUIinteraction(numDevices)
+	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
+	//execute(cmd)
+	execute("after1()")
+
+
 end
 
 
@@ -222,18 +199,18 @@ window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
 	DrawText 807,277, "\Z14\$WMTEX$ {}^{o} $/WMTEX$" 
 	DrawText 982,283, "\Z14Hz" 
 	
-	popupMenu fadcSetting1,pos={420,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD1 speed",size={100,20},value=sc_fadcSpeed1 
-	popupMenu fadcSetting2,pos={620,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD2 speed",size={100,20},value=sc_fadcSpeed2 
-	popupMenu fadcSetting3,pos={820,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD3 speed",size={100,20},value=sc_fadcSpeed3 
-	popupMenu fadcSetting4,pos={420,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD4 speed",size={100,20},value=sc_fadcSpeed4 
-	popupMenu fadcSetting5,pos={620,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD5 speed",size={100,20},value=sc_fadcSpeed5 
-	popupMenu fadcSetting6,pos={820,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD6 speed",size={100,20},value=sc_fadcSpeed6 
-	DrawText 545, 362, "\Z14Hz"
-	DrawText 745, 362, "\Z14Hz" 
-	DrawText 945, 362, "\Z14Hz" 
-	DrawText 545, 392, "\Z14Hz" 
-	DrawText 745, 392, "\Z14Hz" 
-	DrawText 945, 392, "\Z14Hz" 
+	//popupMenu fadcSetting1,pos={420,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD1 speed",size={100,20},value=sc_fadcSpeed1 
+	//popupMenu fadcSetting2,pos={620,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD2 speed",size={100,20},value=sc_fadcSpeed2 
+	//popupMenu fadcSetting3,pos={820,345},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD3 speed",size={100,20},value=sc_fadcSpeed3 
+	//popupMenu fadcSetting4,pos={420,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD4 speed",size={100,20},value=sc_fadcSpeed4 
+	//popupMenu fadcSetting5,pos={620,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD5 speed",size={100,20},value=sc_fadcSpeed5 
+	//popupMenu fadcSetting6,pos={820,375},proc=scfw_scfw_update_fadcSpeed,mode=1,title="\Z14FD6 speed",size={100,20},value=sc_fadcSpeed6 
+//	DrawText 545, 362, "\Z14Hz"
+//	DrawText 745, 362, "\Z14Hz" 
+//	DrawText 945, 362, "\Z14Hz" 
+//	DrawText 545, 392, "\Z14Hz" 
+//	DrawText 745, 392, "\Z14Hz" 
+//	DrawText 945, 392, "\Z14Hz" 
 
 	// identical to ScanController window
 	// all function calls are to ScanController functions
@@ -303,7 +280,10 @@ window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
 	SetVariable sc_freqBox1, pos={6,500},size={40,20}, value=sc_freqAW1 ,side=1,title="\Z14 ", disable = 1, help = {"Shows the frequency of AW1"}
 	button setupAWGfdac,pos={260,555},size={110,20},proc=scw_setupAWG,title="Setup AWG", disable = 1
 	
+	
+
 	 
+
 	
 endmacro
 
@@ -324,6 +304,7 @@ window scfw_fdacInitWindow() : Panel
 	Button default_fdacinit,pos={170,490},size={70,20},proc=scfw_fdacAskUserUpdate,title="DEFAULT"
 endmacro
 
+
 function scfw_fdacAskUserUpdate(action) : ButtonControl
 	string action
 	variable/g fdac_answer
@@ -340,56 +321,198 @@ function scfw_fdacAskUserUpdate(action) : ButtonControl
 	endswitch
 end
 
-function scfw_SetGUIinteraction(numDevices)
-	variable numDevices
 
-	// edit interaction mode popup menus if nessesary
-	switch(numDevices)
-		case 1:
-			popupMenu fadcSetting2, disable=2
-			popupMenu fadcSetting3, disable=2
-			popupMenu fadcSetting4, disable=2
-			popupMenu fadcSetting5, disable=2
-			popupMenu fadcSetting6, disable=2
-			break
-		case 2:
-			popupMenu fadcSetting3, disable=2
-			popupMenu fadcSetting4, disable=2
-			popupMenu fadcSetting4, disable=2
-			popupMenu fadcSetting5, disable=2
-			popupMenu fadcSetting6, disable=2
-			break
-		case 3:
-			popupMenu fadcSetting4, disable=2
-			popupMenu fadcSetting5, disable=2
-			popupMenu fadcSetting6, disable=2
-			break
-		case 4:
-			popupMenu fadcSetting5, disable=2
-			popupMenu fadcSetting6, disable=2
-			break
-		case 5:
-			popupMenu fadcSetting6, disable=2
-			break
-		default:
-			if(numDevices > 6)
-				print("[WARNINIG] \"FastDAC GUI\": More than 6 devices are hooked up.")
-				print("Call \"setfadcSpeed\" to set the speeds of the devices not displayed in the GUI.")
-			endif
-	endswitch
+
+Function RampMultipleFDAC(string channels, variable setpoint, [variable ramprate, string setpoints_str])
+    // This function ramps multiple FastDAC channels to given setpoint(s) at a specified ramp rate.
+    // Parameters:
+    // channels - A comma-separated list of channels to be ramped.
+    // setpoint - A common setpoint to ramp all channels to (ignored if setpoints_str is provided).
+    // ramprate - The ramp rate in mV/s for all channels. If not specified, uses each channel's configured ramp rate.
+    // setpoints_str - An optional comma-separated list of setpoints, allowing individual setpoints for each channel.
+
+ 
+    
+    // If ramprate is not specified or not a number, default to 0 (indicating use of configured ramp rates)
+    ramprate = numtype(ramprate) == 0 ? ramprate : 0
+
+    // Convert channel identifiers to numbers, supporting both numerical IDs and named channels
+    channels = scu_getChannelNumbers(channels)
+    
+    // Abort if the number of channels and setpoints do not match when individual setpoints are provided
+    if (!paramIsDefault(setpoints_str) && (itemsInList(channels, ",") != itemsInList(setpoints_str, ","))) 
+        abort "ERROR[RampMultipleFdac]: Number of channels does not match number of setpoints in setpoints_str"    
+    endif
+    
+    // Initialize variables for the loop
+    Variable i = 0, channel, nChannels = ItemsInList(channels, ",")
+    Variable channel_ramp  // Not used, consider removing if unnecessary
+    
+    // Loop through each channel to apply the ramp
+    for (i = 0; i < nChannels; i += 1)
+        // If individual setpoints are provided, override the common setpoint with the specific value for each channel
+        if (!paramIsDefault(setpoints_str)) 
+            setpoint = str2num(StringFromList(i, setpoints_str, ","))
+        endif
+        
+        // Extract the channel number from the list and ramp to the setpoint
+        channel = str2num(StringFromList(i, channels, ","))
+        fd_rampOutputFDAC(channel, setpoint, ramprate)  // Ramp the channel to the setpoint at the specified rate
+    endfor
+End
+
+
+Function fd_rampOutputFDAC(int channel, variable setpoint, variable ramprate) // Units: mV, mV/s
+    // This function ramps one FD DAC channel to a specified setpoint at a given ramprate.
+    // It checks that both the setpoint and ramprate are within their respective limits before proceeding.
+
+    // Access the global wave containing FDAC channel settings
+    Wave/T fdacvalstr
+    
+    // Ensure the output is within the hardware's permissible limits
+    Variable output = check_fd_limits(channel, setpoint)
+    
+    // Check if the requested ramprate is within the software limit
+    // If not, the maximum permissible ramprate is used instead
+    If (ramprate > str2num(fdacvalstr[channel][4]) || numtype(ramprate) != 0)
+        printf "[WARNING] \"fd_rampOutputFDAC\": Ramprate of %.0fmV/s requested for channel %d. Using max_ramprate of %.0fmV/s instead\n", ramprate, channel, str2num(fdacvalstr[channel][4])
+        ramprate = str2num(fdacvalstr[channel][4])
+        
+        // If after adjustment, the ramprate is still not a numeric type, abort the operation
+        If (numtype(ramprate) != 0)
+            Abort "ERROR[fd_rampOutputFDAC]: Bad ramprate in ScanController_Fastdac window for channel " + num2str(channel)
+        EndIf
+    EndIf
+    
+    // Ramp the DAC channel to the desired output with the validated ramprate
+    set_one_FDACChannel(channel, output, ramprate)
+    
+    // Update the DAC value in the FastDAC panel to reflect the change
+    Variable currentoutput = get_one_FDACChannel(channel)
+    scfw_updateFdacValStr(channel, currentoutput, update_oldValStr=1)
+End
+
+function check_fd_limits(int channel, variable output)
+	// check that output is within software limit
+	// overwrite output to software limit and warn user
+	wave/t fdacvalstr
+
+	string softLimitPositive = "", softLimitNegative = "", expr = "(-?[[:digit:]]+),\s*([[:digit:]]+)"
+	splitstring/e=(expr) fdacvalstr[channel][2], softLimitNegative, softLimitPositive
+	if(output < str2num(softLimitNegative) || output > str2num(softLimitPositive))
+		switch(sign(output))
+			case -1:
+				output = str2num(softLimitNegative)
+				break
+			case 1:
+				if(output != 0)
+					output = str2num(softLimitPositive)
+				else
+					output = 0
+				endif
+				break
+		endswitch
+		string warn
+		sprintf warn, "[WARNING] \"fd_rampOutputFDAC\": Output voltage must be within limit. Setting channel %d to %.3fmV\n", channel, output
+		print warn
+	endif
+
+	return output
 end
 
-//function getFADCmeasureFreq(instrID)
-//	// Calculates measurement frequency as sampleFreq/numadc 
-//	variable instrID
-//	
-//	svar sc_fdackeys	
-//	variable numadc, samplefreq
-//	numadc = scf_getNumRecordedADCs() 
-//	if (numadc == 0)
-//		numadc = 1
-//	endif
-//	samplefreq = getFADCspeed(instrID)
-//	return samplefreq/numadc
+
+
+
+
+
+///////////////////////
+//// API functions ////
+///////////////////////
+
+
+//function set_one_fadcSpeed(int adcValue,variable speed)
+//	svar fd
+//	String cmd = "set-convert-time"
+//	// Convert variables to strings and construct the JSON payload dynamically
+//	String payload
+//	payload = "{\"adc\": " + num2str(adcValue) + ", \"duration_us\": " + num2str(speed) + "}"
+//	String headers = "accept: application/json\nContent-Type: application/json"
+//	// Perform the HTTP PUT request
+//	String response = putHTTP(instrID, cmd, payload, headers)
+//	print response
 //end
+//
+//
+//function get_one_fadcSpeed(int adcValue)
+//	svar fd
+//	string	response=getHTTP(fd,"read-convert-time/"+num2str(adcValue),"");
+//	string value
+//	value=getjsonvalue(response,"durationUs")
+//	variable speed = roundNum(1.0/str2num(value)*1.0e6,0)
+//	return speed
+//end
+//
+//function get_one_FADCChannel(int channel) // Units: mV
+//	svar fd
+//	string	response=getHTTP(fd,"get-adc/"+num2str(channel),"");print response
+//	string adc
+//	adc=getjsonvalue(response,"value")
+//	return str2num(adc)
+//end
+//
+//function get_one_FDACChannel(int channel) // Units: mV
+//	svar fd
+//	string	response=getHTTP(fd,"get-dac/"+num2str(channel),"");
+//	string adc
+//	adc=getjsonvalue(response,"value")
+//	return str2num(adc)
+//end
+
+//function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
+//	svar fd
+//	String cmd = "smart-ramp-sync"
+//	String payload
+//	payload = "{\"dac\": " + num2str(channel) + ", \"setpoint_mv\": " + num2str(setpoint)+ ", \"rate_mv_s\": " + num2str(ramprate) + "}"
+//	String headers = "accept: application/json\nContent-Type: application/json"
+//	String response = postHTTP(fd, cmd, payload, headers)
+//	print response
+//end
+
+
+
+
+
+
+
+
+function set_one_fadcSpeed(int adcValue,variable speed)
+speed=gnoise(1)
+return speed
+end
+
+
+function get_one_fadcSpeed(int adcValue)
+variable speed=gnoise(1)
+return speed
+end
+
+function get_one_FADCChannel(int channel) // Units: mV
+variable speed=gnoise(1)
+return speed
+end
+
+function get_one_FDACChannel(int channel) // Units: mV
+variable speed=channel+gnoise(1)
+return speed
+end
+
+function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
+variable speed=gnoise(1)
+return speed
+end
+
+
+
+
+
 

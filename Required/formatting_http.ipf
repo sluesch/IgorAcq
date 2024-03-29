@@ -84,11 +84,16 @@ function/s putHTTP(instrID,cmd,payload,headers)
 	string instrID, cmd, payload, headers
 	string response=""
 
-//	print instrID+cmd, payload
+//	print "url=",instrID+cmd
+//	print "payload=", payload
+//	print headers
+	
 	URLRequest /TIME=15.0 /DSTR=payload url=instrID+cmd, method=put, headers=headers
 
 	if (V_flag == 0)    // No error
 		response = S_serverResponse // response is a JSON string
+		print V_responseCode
+		print V_flag
 		if (V_responseCode != 200)  // 200 is the HTTP OK code
 			print "[ERROR] HTTP response code " + num2str(V_responseCode)
 			if(strlen(response)>0)

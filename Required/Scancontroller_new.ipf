@@ -188,78 +188,9 @@ function scw_OpenInstrButton(action) : Buttoncontrol
 	sc_openInstrConnections(1)
 end
 
-//function scfw_update_fdac(action) : ButtonControl
-//	string action
-//	svar sc_fdackeys
-//	wave/t fdacvalstr
-//	wave/t old_fdacvalstr
-//	nvar fd_ramprate
-//
-//	scfw_update_all_fdac(option=action)
-//end
 
 
-//function scfw_update_all_fdac([option])
-//	// Ramps or updates all FastDac outputs
-//	string option // {"fdacramp": ramp all fastdacs to values currently in fdacvalstr, "fdacrampzero": ramp all to zero, "updatefdac": update fdacvalstr from what the dacs are currently at}
-//	svar sc_fdackeys
-//	wave/t fdacvalstr
-//	wave/t old_fdacvalstr
-//
-//	if (paramisdefault(option))
-//		option = "fdacramp"
-//	endif
-//	
-//	
-//	// Either ramp fastdacs or update fdacvalstr
-//	variable i=0,j=0,output = 0, numDACCh = 8, startCh = 0, viRM = 0
-//	string visa_address = "", fdIDname = ""
-//	variable numDevices = str2num(stringbykey("numDevices",sc_fdackeys,":",","))
-//	for(i=0;i<numDevices;i+=1)
-//		numDACCh = scf_getFDInfoFromDeviceNum(i+1, "numDAC")
-//		fdIDname = stringByKey("name"+num2str(i+1), sc_fdacKeys, ":", ",")
-//		nvar fdID = $fdIDname
-//		if(numDACCh > 0)
-//			visa_address = stringbykey("visa"+num2istr(i+1),sc_fdackeys,":",",")
-//			try
-//				strswitch(option)
-//					case "fdacramp":
-//						for(j=0;j<numDACCh;j+=1)
-//							output = str2num(fdacvalstr[startCh+j][1])
-//							if(output != str2num(old_fdacvalstr[startCh+j]))
-//								rampmultipleFDAC(fdID, num2str(startCh+j), output)
-//							endif
-//						endfor
-//						break
-//					case "fdacrampzero":
-//						for(j=0;j<numDACCh;j+=1)
-//							rampmultipleFDAC(fdID, num2str(startCh+j), 0)
-//						endfor
-//						break
-//					case "updatefdac":
-//						variable value
-//						for(j=0;j<numDACCh;j+=1)
-//							// getfdacOutput(tempname,j)
-//							value = getfdacOutput(fdID,j+startCh)
-//							scfw_updateFdacValStr(startCh+j, value, update_oldValStr=1)
-//						endfor
-//						break
-//				endswitch
-//			catch
-//				// reset error code, so VISA connection can be closed!
-//				variable err = GetRTError(1)
-//				viClose(fdID)
-//				
-//				// reopen normal instrument connections
-//				sc_OpenInstrConnections(0)
-//				// silent abort
-//				abortonvalue 1,10
-//			endtry
-//		endif
-//		startCh += numDACCh
-//	endfor
-//end
-//
+
 
 
 
@@ -269,66 +200,92 @@ function scfw_update_fadc(action) : ButtonControl
 	wave/t fadcvalstr
 	variable i=0
 
-	variable numDevices=1 // = str2num(stringbykey("numDevices",sc_fdackeys,":",","))
 	variable numADCCh
-	numADCch = 4*numDevices; // 4 is for the 4 ADC channels per FD-box
+	numADCch = dimsize(fadcvalstr,0); 
 	variable temp
 	for(i=0;i<numADCCh;i+=1)
-		temp= getFADCChannelSingle(i)
+		temp= get_one_FADCChannel(i)
 		fadcvalstr[i][1] = num2str(temp)
 	endfor
 end
 
 
-
-function/S scf_getFDAddress(device_num)
-	// Get visa address from device number (has to be it's own function because this returns a string)
-	variable device_num
-	if(device_num == 0)
-		abort "ERROR[scf_getFDVisaAddress]: device_num starts from 1 not 0"
-	endif
-
-	svar sc_fdacKeys
-	return stringByKey("visa"+num2str(device_num), sc_fdacKeys, ":", ",")
+function scfw_update_fdac(action) : ButtonControl
+	string action
+	svar sc_fdackeys
+	wave/t fdacvalstr
+	wave/t old_fdacvalstr
+	scfw_update_all_fdac(option=action)
 end
 
 
-//function scf_getFDInfoFromDeviceNum(device_num, info, [str])
-//	// Returns the value for selected info of numbered fastDAC device (i.e. 1, 2 etc)
-//	// Valid requests ('master', 'name', 'numADC', 'numDAC')
-//	variable device_num, str
-//	string info
-//
-//	svar sc_fdacKeys
-//
-//	if(device_num > scf_getNumFDs())
-//		string buffer
-//		sprintf buffer,  "ERROR[scf_getFDInfoFromDeviceNum]: Asking for device %d, but only %d devices connected\r", device_num, scf_getNumFDs()
-//		abort buffer
-//	endif
-//
-//	string cmd
-//	strswitch (info)
-//		case "master":
-//			cmd = "master"
-//			break
-//		case "name":
-//			cmd = "name"
-//			break
-//		case "numADC":
-//			cmd = "numADCch"
-//			break
-//		case "numDAC":
-//			cmd = "numDACch"
-//			break
-//		default:
-//			abort "ERROR[scf_getFDInfoFromID]: Requested info (" + info + ") not understood"
-//			break
-//	endswitch
-//
-//	return str2num(stringByKey(cmd+num2str(device_num), sc_fdacKeys, ":", ","))
-//
-//end
+
+function scfw_update_all_fdac([option])
+	// Ramps or updates all FastDac outputs
+	string option // {"fdacramp": ramp all fastdacs to values currently in fdacvalstr, "fdacrampzero": ramp all to zero, "updatefdac": update fdacvalstr from what the dacs are currently at}
+	wave/t fdacvalstr
+	wave/t old_fdacvalstr
+	wave/t DAC_channel
+
+	if (paramisdefault(option))
+		option = "fdacramp"
+	endif
+	
+	// Either ramp fastdacs or update fdacvalstr
+	variable i=0,j=0,output = 0, startCh = 0, numDACCh
+	numDACCh = dimsize(DAC_channel,0)
+	
+
+			try
+				strswitch(option)
+					case "fdacramp":
+						for(j=0;j<numDACCh;j+=1)
+							output = str2num(fdacvalstr[j][1])
+							if(output != str2num(old_fdacvalstr[j]))
+								rampmultipleFDAC(num2str(j), output)
+							endif
+						endfor
+						break
+					case "fdacrampzero":
+						for(j=0;j<numDACCh;j+=1)
+							rampmultipleFDAC(num2str(j), 0)
+						endfor
+					break
+
+					case "updatefdac":
+						variable value
+						for(j=0;j<numDACCh;j+=1)
+							value=get_one_FDACChannel(j)
+							scfw_updateFdacValStr(j, value, update_oldValStr=1)
+						endfor
+						break
+				endswitch
+			catch
+			
+				
+				// silent abort
+				abortonvalue 1,10
+			endtry
+		
+	
+end
+
+function scfw_updateFdacValStr(channel, value, [update_oldValStr])
+	// Update the global string(s) which store FastDAC values. Update the oldValStr if you know that is the current DAC output.
+	variable channel, value, update_oldValStr
+
+	// TODO: Add checks here
+	// check value is valid (not NaN or inf)
+	// check channel_num is valid (i.e. within total number of fastdac DAC channels)
+	wave/t fdacvalstr
+	fdacvalstr[channel][1] = num2str(value)
+	if (update_oldValStr != 0)
+		wave/t old_fdacvalstr
+		old_fdacvalstr[channel] = num2str(value)
+	endif
+end
+
+
 
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -356,3 +313,120 @@ function sc_openInstrConnections(print_cmd)
 		endif
 	endfor
 end
+
+// set update speed for ADC (all FD_boxes must have the same speed)
+
+////////////////////////////////
+///////// utility functions //// (scu_...)
+////////////////////////////////
+
+function scu_unixTime()
+	// returns the current unix time in seconds
+	return DateTime - date2secs(1970,1,1) - date2secs(-1,-1,-1)
+end
+
+
+function roundNum(number,decimalplace) 
+    // to return integers, decimalplace=0
+	variable number, decimalplace
+	variable multiplier
+	multiplier = 10^decimalplace
+	return round(number*multiplier)/multiplier
+end
+
+
+Function scu_assertSeparatorType(string list_string, string assert_separator)
+    // Validates that the list_string uses the assert_separator exclusively.
+    // If it finds an alternative common separator ("," or ";"), it raises an error.
+    // This ensures data string consistency, especially in functions that process delimited lists.
+
+    
+    // Check if the desired separator is not found in the list_string
+    If (strsearch(list_string, assert_separator, 0) < 0)
+        // Prepare for potential error messaging
+        String buffer
+        String calling_func = GetRTStackInfo(2)  // Identifies the function making the call for error context
+        
+        // Determine the nature of the mismatch based on the asserted separator
+        StrSwitch (assert_separator)
+            Case ",":
+                // If the assert_separator is a comma but a semicolon is found instead
+                If (strsearch(list_string, ";", 0) >= 0)
+                    // Format and abort with an error message
+                    SPrintF buffer, "ERROR[scu_assertSeparatorType]: In function \"%s\" Expected separator = %s     Found separator = ;\r", calling_func, assert_separator
+                    Abort buffer
+                EndIf
+                Break
+            
+            Case ";":
+                // If the assert_separator is a semicolon but a comma is found instead
+                If (strsearch(list_string, ",", 0) >= 0)
+                    // Format and abort with an error message
+                    SPrintF buffer, "ERROR[scu_assertSeparatorType]: In function \"%s\" Expected separator = %s     Found separator = ,\r", calling_func, assert_separator
+                    Abort buffer
+                EndIf
+                Break
+            
+            Default:
+                // If any other separator is asserted but a comma or semicolon is found
+                If (strsearch(list_string, ",", 0) >= 0 || strsearch(list_string, ";", 0) >= 0)
+                    // Format and abort with a generic error message covering both common separators
+                    SPrintF buffer, "ERROR[scu_assertSeparatorType]: In function \"%s\" Expected separator = %s     Found separator = , or ;\r", calling_func, assert_separator
+                    Abort buffer
+                EndIf
+                Break
+        EndSwitch      
+    EndIf
+End
+
+Function/S scu_getChannelNumbers(string channels)
+    // This function converts a string of channel identifiers (either names or numbers)
+    // into a comma-separated list of channel numbers for FastDAC.
+    // It ensures that the channels are properly formatted and exist within the FastDAC configuration.
+    
+    // Assert that the channels string uses commas as separators
+    scu_assertSeparatorType(channels, ",")
+    
+    // Initialize variables for processing
+    String new_channels = "", err_msg
+    Variable i = 0
+    String ch
+    
+    // Process for FastDAC channels
+
+        Wave/T fdacvalstr  // Assuming fdacvalstr contains FastDAC channel info
+        for(i=0;i<itemsinlist(channels, ",");i+=1)
+            // Extract and trim each channel identifier from the list
+            ch = stringfromlist(i, channels, ",")
+            ch = removeLeadingWhitespace(ch)
+            ch = removeTrailingWhiteSpace(ch)
+            
+            // Check if the channel identifier is not numeric and not empty
+            if(numtype(str2num(ch)) != 0 && cmpstr(ch,""))
+                // Search for the channel identifier in FastDAC configuration
+                duplicate/o/free/t/r=[][3] fdacvalstr fdacnames
+                findvalue/RMD=[][3]/TEXT=ch/TXOP=5 fdacnames
+                if(V_Value == -1)  // If not found, abort with error
+                    sprintf err_msg "ERROR[scu_getChannelNumbers]:No FastDAC channel found with name %s", ch
+                    abort err_msg
+                else  // If found, use the corresponding channel number
+                    ch = fdacvalstr[V_value][0]
+                endif
+            endif
+            // Add the processed channel to the new_channels list
+            new_channels = addlistitem(ch, new_channels, ",", INF)
+        endfor
+
+    
+    // Clean up: Remove the trailing comma from the new_channels string
+    if(strlen(new_channels) > 0)
+        new_channels = new_channels[0,strlen(new_channels)-1]
+    endif
+    
+    return new_channels
+End
+
+
+
+
+
