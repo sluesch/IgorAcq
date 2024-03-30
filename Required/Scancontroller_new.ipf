@@ -227,6 +227,21 @@ function scfw_update_fdac(action) : ButtonControl
 end
 
 
+function scw_killgraphs(action) : Buttoncontrol
+	string action
+	string opengraphs
+	variable ii
+
+	opengraphs = winlist("*",";","WIN:1")
+	if(itemsinlist(opengraphs)>0)
+		for(ii=0;ii<itemsinlist(opengraphs);ii+=1)
+			killwindow $stringfromlist(ii,opengraphs)
+		endfor
+	endif
+//	sc_controlwindows("") // Kill all open control windows
+end
+
+
 
 function scfw_update_all_fdac([option])
 	// Ramps or updates all FastDac outputs
@@ -869,9 +884,10 @@ function scv_setFreq([S,A])
 	Struct AWGvars &A
 	int i; //string instrIDs
 	S.samplingFreq=1/82*1e6;
-	variable maxADCs=fd_getmaxADCs()
+	variable maxADCs=fd_getmaxADCs(S)
 	S.maxADCs=maxADCs;
 	S.measureFreq = S.samplingFreq/S.maxADCs
+	
 end
 
 
@@ -2065,12 +2081,6 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 		AWG = AWG_list
 	endif 
 		 
-   // Check that checks have been carried out in main scan function where they belong
-	if(S.lims_checked != 1 && S.readVsTime != 1)  // No limits to check if doing a readVsTime
-	 	abort "ERROR[fd_record_values]: FD_ScanVars.lims_checked != 1. Probably called before limits/ramprates/sweeprates have been checked in the main Scan Function!"
-	endif
-
-
 
 	// If beginning of scan, record start time
 	if (rowNum == 0 && (S.start_time == 0 || numtype(S.start_time) != 0))  
@@ -2084,7 +2094,7 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 	// Process 1D read and distribute
 	if (!skip_data_distribution)
 	
-		scfd_ProcessAndDistribute(S, AWG, rowNum) 
+		//scfd_ProcessAndDistribute(S, AWG, rowNum) 
 		
 	endif
 end
@@ -2108,30 +2118,10 @@ function scfd_SendCommandAndRead(S, AWG_list, rowNum, [skip_raw2calc])
 		abort "ERROR[scfd_SendCommandAndRead]: Not enough info in ScanVars to run scan"
 	endif
 	
-	//cmd_sent = fd_start_sweep(S, AWG_list=AWG_list)
-	
-	totalByteReturn = S.maxADCs*2*S.numptsx // would likely be the maxADCs number
-	variable entered_panic_mode = 0
-	try
-   		entered_panic_mode = scfd_RecordBuffer(S, rowNum, totalByteReturn, skip_raw2calc=skip_raw2calc)
-   catch  // One chance to do the sweep again if it failed for some reason (likely from a buffer overflow)
-		variable errCode = GetRTError(1)  // Clear the error
-		if (v_AbortCode != 10)  // 10 is returned when user clicks abort button mid sweep
-			printf "WARNING[scfd_SendCommandAndRead]: Error during sweep at row %d. Attempting once more without updating graphs.\r" rowNum
-			doupdate; int i
-			for(i=0;i<itemsinlist(S.instrIDs);i++)
-				string fdIDname = stringfromlist(i, S.instrIDs)
-				nvar fdID = $fdIDname
-				//fd_stopFDACsweep(fdID)   // Make sure the previous scan is stopped
-			endfor
-			//cmd_sent = fd_start_sweep(S, AWG_list=AWG_list)
-			entered_panic_mode = scfd_RecordBuffer(S, rowNum, totalByteReturn, record_only=1)  // Try again to record the sweep
-		else
-			abortonvalue 1,10  // Continue to raise the code which specifies user clicked abort button mid sweep
-		endif
-	endtry	
+	fd_start_sweep(S, AWG_list=AWG_list)
+	scfd_RecordBuffer(S, rowNum, totalByteReturn, skip_raw2calc=skip_raw2calc)
+   
 
-	string endstr
 	
 //	for(i=0;i<itemsinlist(S.instrIDs);i++)
 //		fdIDname = stringfromlist(i, S.instrIDs)
@@ -2148,11 +2138,11 @@ function scfd_SendCommandAndRead(S, AWG_list, rowNum, [skip_raw2calc])
 //			 // get fdacoutput is likely failing here. 
 //		endif
 //	endfor
-	
-	if (!S.readVsTime)
-		scfd_updateWindow(S, S.numADCs)
-	endif
-	
+
+	// when scan is done update all DAC and ADC values
+scfw_update_all_fdac(option="updatefdac")
+scfw_update_fadc("")
+
 //	if(AWG_list.use_awg == 1)  // Reset AWs back to zero (no reason to leave at end of AW)
 //		for(i=0;i<itemsinlist(S.instrIDs);i++)
 //			fdIDname = stringfromlist(i, S.instrIDs)
@@ -2300,7 +2290,6 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 end
 
 function scfd_RecordBuffer(S, rowNum, totalByteReturn, [record_only, skip_raw2calc])
-	// Returns whether recording entered into panic_mode during sweep
    struct ScanVars &S
    variable rowNum, totalByteReturn
    variable record_only // If set, then graphs will not be updated until all data has been read (defaults to 0)
@@ -2526,37 +2515,39 @@ function scfd_updateWindow(S, numAdcs)
 	// Update the DAC and ADC values in the FastDAC window (e.g. at the end of a sweep)
   struct ScanVars &S
   variable numADCs
-  // Note: This does not yet support multiple fastdacs
+//  // Note: This does not yet support multiple fastdacs
+//
+//  scu_assertSeparatorType(S.channelsx, ",")
+//  scu_assertSeparatorType(S.finxs, ",")
+//  scu_assertSeparatorType(S.adcList, ";")
+//
+//  wave/T fdacvalstr
+//
+//  variable i, device_num
+//  string channel, device_channel, fdIDname
+//  for(i=0;i<itemsinlist(S.channelsx,",");i+=1)
+//   channel = stringfromlist(i,S.channelsx,",")
+//   fdIDname = stringfromlist(i,S.daclistIDs)
+//   nvar fdID = $fdIDname
+//	//*device_channel = scf_getChannelNumsOnFD(channel, device_num)  // Get channel for specific fastdac (and device_num of that fastdac)
+////	if (cmpstr(scf_getFDVisaAddress(device_num), getResourceAddress(fdID)) != 0)
+////		print("ERROR[scfd_updateWindow]: channel device address doesn't match instrID address")
+////	else
+////		scfw_updateFdacValStr(str2num(channel), getFDACOutput(fdID, str2num(device_channel)), update_oldValStr=1)  // + scf_getChannelStartNum( scf_getFDVisaAddress(device_num))
+////	endif
+//  endfor
+//
+//  variable channel_num
+//  
+//  for(i=0;i<numADCs;i+=1)
+//    channel_num = str2num(stringfromlist(i,S.adclist,";"))
+//    fdIDname = stringfromlist(i,S.ADClistIDs)  //attempt
+//   
+//    //getfadcChannel(S.instrIDx,channel_num, len_avg=0.001)  // This updates the window when called
+//    //*getfadcChannel(channel_num, len_avg=0.001)  // attempt
+//  endfor
 
-  scu_assertSeparatorType(S.channelsx, ",")
-  scu_assertSeparatorType(S.finxs, ",")
-  scu_assertSeparatorType(S.adcList, ";")
 
-  wave/T fdacvalstr
-
-  variable i, device_num
-  string channel, device_channel, fdIDname
-  for(i=0;i<itemsinlist(S.channelsx,",");i+=1)
-   channel = stringfromlist(i,S.channelsx,",")
-   fdIDname = stringfromlist(i,S.daclistIDs)
-   nvar fdID = $fdIDname
-	//*device_channel = scf_getChannelNumsOnFD(channel, device_num)  // Get channel for specific fastdac (and device_num of that fastdac)
-//	if (cmpstr(scf_getFDVisaAddress(device_num), getResourceAddress(fdID)) != 0)
-//		print("ERROR[scfd_updateWindow]: channel device address doesn't match instrID address")
-//	else
-//		scfw_updateFdacValStr(str2num(channel), getFDACOutput(fdID, str2num(device_channel)), update_oldValStr=1)  // + scf_getChannelStartNum( scf_getFDVisaAddress(device_num))
-//	endif
-  endfor
-
-  variable channel_num
-  
-  for(i=0;i<numADCs;i+=1)
-    channel_num = str2num(stringfromlist(i,S.adclist,";"))
-    fdIDname = stringfromlist(i,S.ADClistIDs)  //attempt
-   
-    //getfadcChannel(S.instrIDx,channel_num, len_avg=0.001)  // This updates the window when called
-    //*getfadcChannel(channel_num, len_avg=0.001)  // attempt
-  endfor
 end
 
 
@@ -2664,3 +2655,23 @@ function scfd_distributeData2(buffer,adcList,bytes,rowNum,colNumStart,[direction
 //	endfor
 end
 
+
+Function sc_controlwindows(ba) : ButtonControl
+	STRUCT WMButtonAction &ba
+
+	switch( ba.eventCode )
+		case 2: // mouse up
+	doWindow/k/z SweepControl  // Attempt to close previously open window just in case
+			break
+		case -1: // control being killed
+			break
+	endswitch
+
+	return 0
+End
+
+function scw_updatewindow(action) : ButtonControl
+	string action
+
+	//*scw_saveConfig(scw_createConfig())   // write a new config file
+end

@@ -668,10 +668,16 @@ function fd_get_sweeprate_from_numpts(start, fin, numpts, measureFreq)
 	return sweeprate
 end
 
-function fd_getmaxADCs()
-variable maxADCs=1
-wave fadcattr
-
-return maxADCs
+function fd_getmaxADCs(S)
+	struct ScanVars &S
+	variable maxADCs
+	wave fadcattr
+	wave numericwave
+	string adcList = scf_getRecordedFADCinfo("channels")
+	StringToListWave(adclist)
+	numericwave=floor(numericwave/4)
+	maxADCs=FindMaxRepeats(numericwave)
+	S.numADCs=dimsize(numericwave,0)
+	return maxADCs
 end
 
