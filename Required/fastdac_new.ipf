@@ -48,61 +48,6 @@ end
 
 
 
-
-//function openMultipleFDACs(portnum, [verbose])
-//	// This function is added to ease opening up multiple fastDAC connections in order
-//	// It assumes the default options for verbose, numDACCh, numADCCh, and optical,
-//	// The values can be found in the function openfastDACconnection()
-//	// it will create the variables fd1,fd2,fd3.......
-//	// it also reorders the list seen in the FastDacWindow because sc_fdackeys is killed everytime
-//	//  	implying if the order changes -> the channels in the GUI will represent the new order.
-//	
-//	string portnum
-//	variable verbose
-//	
-//	killstrings /z sc_fdackeys
-//	
-//
-//		string instrID      = "fd" 
-//		string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
-//		openFastDACconnection(instrID, http_address, verbose=verbose)
-//	
-//
-//end
-
-
-function scf_addFDinfos(instrID,visa_address,numDACCh,numADCCh)  
-	// Puts FastDAC information into global sc_fdackeys which is a list of such entries for each connected FastDAC
-	string instrID, visa_address
-	variable numDACCh, numADCCh
-
-	variable numDevices
-		svar/z sc_fdackeys
-	if(!svar_exists(sc_fdackeys))
-		string/g sc_fdackeys = ""
-		numDevices = 0
-	else
-		numDevices = str2num(stringbykey("numDevices",sc_fdackeys,":",","))
-	endif
-
-	variable i=0, deviceNum=numDevices+1
-	for(i=0;i<numDevices;i+=1)
-		if(cmpstr(instrID,stringbykey("name"+num2istr(i+1),sc_fdackeys,":",","))==0)
-			deviceNum = i+1
-			break
-		endif
-	endfor
-
-	sc_fdackeys = replacenumberbykey("numDevices",sc_fdackeys,deviceNum,":",",")
-	sc_fdackeys = replacestringbykey("name"+num2istr(deviceNum),sc_fdackeys,instrID,":",",")
-	sc_fdackeys = replacestringbykey("visa"+num2istr(deviceNum),sc_fdackeys,visa_address,":",",")
-	sc_fdackeys = replacenumberbykey("numDACCh"+num2istr(deviceNum),sc_fdackeys,numDACCh,":",",")
-	sc_fdackeys = replacenumberbykey("numADCCh"+num2istr(deviceNum),sc_fdackeys,numADCCh,":",",")
-	sc_fdackeys = sortlist(sc_fdackeys,",")
-end
-
-
-
 function initFastDAC()
 wave/t ADC_channel, DAC_channel, DAC_label
 
@@ -122,8 +67,6 @@ wave/t ADC_channel, DAC_channel, DAC_label
 	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
 	//execute(cmd)
 	execute("after1()")
-
-
 end
 
 
@@ -421,7 +364,195 @@ function check_fd_limits(int channel, variable output)
 end
 
 
+//////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// AWG stuff////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
 
+
+
+function fd_initGlobalAWG()
+	Struct AWGVars S
+	// Set empty strings instead of null
+	S.AW_waves   = ""
+	S.AW_dacs    = ""
+	S.AW_dacs2   = ""
+	S.channels_AW0   = ""
+	S.channels_AW1   = ""
+	S.channelIDs = ""
+	S.InstrIDs   = "" 
+	
+	fd_setGlobalAWG(S)
+end
+
+
+function fd_setGlobalAWG(S)
+	// Function to store values from AWG_list to global variables/strings/waves
+	// StructPut ONLY stores VARIABLES so have to store other parts separately
+	struct AWGVars &S
+
+	// Store String parts  
+	make/o/t fd_AWGglobalStrings = {S.AW_Waves, S.AW_dacs, S.AW_dacs2, S.channels_AW0, S.channels_AW1, S.channelIDs, S.InstrIDs}
+
+	// Store variable parts
+	make/o fd_AWGglobalVars = {S.initialized, S.use_AWG, S.lims_checked, S.waveLen, S.numADCs, S.samplingFreq,\
+		S.measureFreq, S.numWaves, S.numCycles, S.numSteps, S.maxADCs}
+end
+
+
+function SetAWG(A, state)
+	// Set use_awg state to 1 or 0
+	struct AWGVars &A
+	variable state
+	
+	if (state != 0 && state != 1)
+		abort "ERROR[SetAWGuseState]: value must be 0 or 1"
+	endif
+	if (A.initialized == 0 || numtype(strlen(A.AW_Waves)) != 0 || numtype(strlen(A.AW_dacs)) != 0)
+		fd_getGlobalAWG(A)
+	endif
+	A.use_awg = state
+	fd_setGlobalAWG(A)
+end
+
+
+function fd_getGlobalAWG(S)
+	// Function to get global values for AWG_list that were stored using set_global_AWG_list()
+	// StructPut ONLY gets VARIABLES
+	struct AWGVars &S
+	// Get string parts
+	wave/T t = fd_AWGglobalStrings
+	
+		if (!WaveExists(t))
+		fd_initGlobalAWG()
+		wave/T t = fd_AWGglobalStrings
+	endif
+	
+	S.AW_waves = t[0]
+	S.AW_dacs = t[1]
+	S.AW_dacs2 = t[2]
+	S.channels_AW0 = t[3]
+	S.channels_AW1 = t[4]
+	S.channelIDs = t[5]
+	S.instrIDs = t[6]
+
+	// Get variable parts
+	wave v = fd_AWGglobalVars
+	S.initialized = v[0]
+	S.use_AWG = v[1]  
+	S.lims_checked = 0 // Always initialized to zero so that checks have to be run before using in scan (see SetCheckAWG())
+	S.waveLen = v[3]
+	S.numADCs = v[4]
+	S.samplingFreq = v[5]
+	S.measureFreq = v[6]
+	S.numWaves = v[7]
+	S.numCycles = v[8]
+	S.numSteps = v[9]
+	S.maxADCs = v[10]
+	
+end
+
+//////////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////// End of AWG stuff//////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////
+
+
+
+
+function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duration, rampratex, delayx, starty, finy, channelsy, numptsy, rampratey, delayy, startxs, finxs, startys, finys, x_label, y_label, alternate,  interlaced_channels, interlaced_setpoints, comments, x_only, use_awg])
+ // Initializes scan variables for FastDAC scanning operations.
+    // The function allows setting up both x and y dimensions with various parameters,
+    // including starting/ending points, channel identifiers, sweep rates, and more.
+    // 
+    // PARAMETERS:
+    // S: ScanVars structure passed by reference to be initialized.
+    // startx, finx: Starting and ending points for the x dimension.
+    // channelsx, channelsy: Comma-separated strings of channels to be scanned in the x and y dimensions.
+    // numptsx, numptsy: Number of points to be scanned in the x and y dimensions.
+    // sweeprate: The sweep rate for the scan.
+    // duration: The duration of the scan.
+    // rampratex, rampratey: Ramp rates for the x and y dimensions.
+    // delayx, delayy: Delays for the x and y dimensions.
+    // startxs, finxs, startys, finys: Alternative to startx/finx for specifying multiple start/end points for each channel.
+    // x_label, y_label: Labels for the x and y dimensions.
+    // alternate: Flag to indicate alternate scanning.
+    // interlaced_channels, interlaced_setpoints: Parameters for interlaced scanning.
+    // comments: Comments or notes regarding the scan.
+    // x_only: Flag to indicate if only x dimension is used.
+    // use_awg: Flag to indicate if AWG is used in the scan.
+
+    struct ScanVars &S
+    variable x_only, startx, finx, numptsx, delayx, rampratex
+    variable starty, finy, numptsy, delayy, rampratey
+	 variable sweeprate  // If start != fin numpts will be calculated based on sweeprate
+	 variable duration   // numpts will be caluculated to achieve duration
+    variable alternate, use_awg
+    string channelsx, channelsy
+    string startxs, finxs, startys, finys
+    string  x_label, y_label
+    string interlaced_channels, interlaced_setpoints
+    string comments
+	
+    // Defaulting optional string parameters to empty if not provided
+	channelsy = selectString(paramIsDefault(channelsy), channelsy, "")
+	startys = selectString(paramIsDefault(startys), startys, "")
+	finys = selectString(paramIsDefault(finys), finys, "")
+	y_label = selectString(paramIsDefault(y_label), y_label, "")	
+
+	channelsx = selectString(paramIsDefault(channelsx), channelsx, "")
+	startxs = selectString(paramIsDefault(startxs), startxs, "")
+	finxs = selectString(paramIsDefault(finxs), finxs, "")
+	x_label = selectString(paramIsDefault(x_label), x_label, "")
+	
+	interlaced_channels = selectString(paramisdefault(interlaced_channels), interlaced_channels, "")
+	interlaced_setpoints = selectString(paramisdefault(interlaced_setpoints), interlaced_setpoints, "")
+
+	comments = selectString(paramIsDefault(comments), comments, "")
+	x_only = paramisdefault(x_only) ? 1 : x_only
+	use_awg = paramisdefault(use_awg) ? 0 : use_awg  
+
+
+	// Standard initialization
+	initScanVars(S, startx=startx, finx=finx, channelsx=channelsx, numptsx=numptsx, delayx=delayx, rampratex=rampratex,\
+	starty=starty, finy=finy, channelsy=channelsy, numptsy=numptsy, rampratey=rampratey, delayy=delayy, \
+	x_label=x_label, y_label=y_label, startxs=startxs, finxs=finxs, startys=startys, finys=finys, alternate=alternate,\
+	interlaced_channels=interlaced_channels, interlaced_setpoints=interlaced_setpoints, comments=comments)
+	
+	
+	// Additional intialization for fastDAC scans
+	S.sweeprate = sweeprate
+	S.duration = duration
+   S.adcList = scf_getRecordedFADCinfo("channels")
+   S.using_fastdac = 1
+
+//   	// Sets channelsx, channelsy to be lists of channel numbers instead of labels
+   scv_setChannels(S, channelsx, channelsy, fastdac=1)  
+     
+   	// Get Labels for graphs
+   	S.x_label = selectString(strlen(x_label) > 0, scu_getDacLabel(S.channelsx, fastdac=1), x_label)  // Uses channels as list of numbers, and only if x_label not passed in
+   	if (S.is2d)
+   		S.y_label = selectString(strlen(y_label) > 0, scu_getDacLabel(S.channelsy, fastdac=1), y_label) 
+   	else
+   		S.y_label = y_label
+   	endif  		
+
+   	// Sets starts/fins (either using starts/fins given or from single startx/finx given)
+   // scv_setSetpoints(S, channelsx, startx, finx, channelsy, starty, finy, startxs, finxs, startys, finys) had to move this
+	
+	
+	scv_setSetpoints(S, channelsx, startx, finx, channelsy, starty, finy, startxs, finxs, startys, finys)
+	
+	// Set variables with some calculation
+    scv_setFreq(S=S) 		// Sets S.samplingFreq/measureFreq/numADCs	
+    scv_setNumptsSweeprateDuration(S) 	// Checks that either numpts OR sweeprate OR duration was provided, and sets ScanVars accordingly
+                                       // Note: Valid for start/fin only (uses S.startx, S.finx NOT S.startxs, S.finxs)
+                                
+   ///// for 2D scans //////////////////////////////////////////////////////////////////////////////////////////////////
+   if(!x_only)
+   		S.channelsy = scu_getChannelNumbers(channelsy)				// converting from channel labels to numbers
+		S.y_label = scu_getDacLabel(S.channelsy)						// setting the y_label
+   endif
+   print S                                                        
+end
 
 
 
@@ -514,5 +645,33 @@ end
 
 
 
+///////////////////
+//// Utilities ////
+///////////////////
+function fd_get_numpts_from_sweeprate(start, fin, sweeprate, measureFreq)
+/// Convert sweeprate in mV/s to numptsx for fdacrecordvalues
+	variable start, fin, sweeprate, measureFreq
+	if (start == fin)
+		abort "ERROR[fd_get_numpts_from_sweeprate]: Start == Fin so can't calculate numpts"
+	endif
+	variable numpts = round(abs(fin-start)*measureFreq/sweeprate)   // distance * steps per second / sweeprate
+	return numpts
+end
 
+function fd_get_sweeprate_from_numpts(start, fin, numpts, measureFreq)
+	// Convert numpts into sweeprate in mV/s
+	variable start, fin, numpts, measureFreq
+	if (numpts == 0)
+		abort "ERROR[fd_get_numpts_from_sweeprate]: numpts = 0 so can't calculate sweeprate"
+	endif
+	variable sweeprate = round(abs(fin-start)*measureFreq/numpts)   // distance * steps per second / numpts
+	return sweeprate
+end
+
+function fd_getmaxADCs()
+variable maxADCs=1
+wave fadcattr
+
+return maxADCs
+end
 
