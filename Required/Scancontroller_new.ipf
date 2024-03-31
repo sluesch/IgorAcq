@@ -196,6 +196,59 @@ function scw_OpenInstrButton(action) : Buttoncontrol
 	sc_openInstrConnections(1)
 end
 
+//function scw_CheckboxClicked(ControlName, Value)
+//	string ControlName
+//	variable value
+//	structure scanvars &S
+//	
+//	string indexstring
+//	wave sc_RawRecord, sc_RawPlot, sc_CalcRecord, sc_CalcPlot, sc_measAsync
+//	nvar sc_PrintRaw, sc_PrintCalc
+//	nvar/z sc_Printfadc, sc_Saverawfadc, sc_demodx, sc_demody, sc_plotRaw, sc_hotcold // FastDAC specific
+//	variable index
+//	string expr
+//	if (stringmatch(ControlName,"sc_RawRecordCheckBox*"))
+//		expr="sc_RawRecordCheckBox([[:digit:]]+)"
+//		SplitString/E=(expr) controlname, indexstring
+//		index = str2num(indexstring)
+//		sc_RawRecord[index] = value
+//	elseif (stringmatch(ControlName,"sc_CalcRecordCheckBox*"))
+//		expr="sc_CalcRecordCheckBox([[:digit:]]+)"
+//		SplitString/E=(expr) controlname, indexstring
+//		index = str2num(indexstring)
+//		sc_CalcRecord[index] = value
+//	elseif (stringmatch(ControlName,"sc_RawPlotCheckBox*"))
+//		expr="sc_RawPlotCheckBox([[:digit:]]+)"
+//		SplitString/E=(expr) controlname, indexstring
+//		index = str2num(indexstring)
+//		sc_RawPlot[index] = value		
+//	elseif (stringmatch(ControlName,"sc_CalcPlotCheckBox*"))
+//		expr="sc_CalcPlotCheckBox([[:digit:]]+)"
+//		SplitString/E=(expr) controlname, indexstring
+//		index = str2num(indexstring)
+//		sc_CalcPlot[index] = value				
+//	elseif (stringmatch(ControlName,"sc_AsyncCheckBox*"))
+//		expr="sc_AsyncCheckBox([[:digit:]]+)"
+//		SplitString/E=(expr) controlname, indexstring
+//		index = str2num(indexstring)
+//		sc_measAsync[index] = value
+//	elseif(stringmatch(ControlName,"sc_PrintRawBox"))
+//		sc_PrintRaw = value
+//	elseif(stringmatch(ControlName,"sc_PrintCalcBox"))
+//		sc_PrintCalc = value
+//	elseif(stringmatch(ControlName,"sc_PrintfadcBox")) // FastDAC window
+//		sc_Printfadc = value
+//	elseif(stringmatch(ControlName,"sc_SavefadcBox")) // FastDAC window
+//		sc_Saverawfadc = value
+//	elseif(stringmatch(ControlName,"sc_plotRawBox")) // FastDAC window
+//		sc_plotRaw = value
+//	elseif(stringmatch(ControlName,"sc_demodyBox")) // FastDAC window
+//		sc_demody = value
+//	elseif(stringmatch(ControlName,"sc_hotcoldBox")) // FastDAC window
+//		sc_hotcold = value
+//
+//	endif
+//end
 
 
 
@@ -2088,6 +2141,7 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 	endif
 	
 	// Send command and read values
+	print "sending command and reading"
 	scfd_SendCommandAndRead(S, AWG, rowNum, skip_raw2calc=skip_raw2calc) 
 	S.end_time = datetime  
 	
@@ -2099,62 +2153,146 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 	endif
 end
 
-function scfd_SendCommandAndRead(S, AWG_list, rowNum, [skip_raw2calc])
-	// Send 1D Sweep command to fastdac and record the raw data it returns ONLY
-	
-	struct ScanVars &S
-	struct AWGVars &AWG_list
-	variable rowNum
-	variable skip_raw2calc // if set to 1 it will skip the reassignment of the calc waves based on raw waves
-	string cmd_sent = ""
-	variable totalByteReturn
-	
-	if (paramisdefault(skip_raw2calc))
-		skip_raw2calc=0
-	endif
+Function scfd_SendCommandAndRead(S,AWG_list,rowNum, [ skip_raw2calc])
+    // Sends a command for a 1D sweep to FastDAC and records the raw data returned.
+    // Optionally skips processing raw data into calculated waves based on skip_raw2calc flag.
+    //
+    // Parameters:
+    // S: Reference to the ScanVars structure containing scanning parameters.
+    // AWG_list: Reference to the AWGVars structure containing AWG configuration.
+    // rowNum: The row number being processed.
+    // skip_raw2calc: Optional flag to skip the conversion of raw waves to calculated waves.
+    
+    Struct ScanVars &S
+    Struct AWGVars &AWG_list
+    Variable rowNum
+    Variable skip_raw2calc  // Optional flag to skip processing of raw data
+    String cmd_sent  // Command sent to FastDAC (currently not used but initialized)
+    Variable numpnts_read  // Number of points read in the current operation
+    variable done = 0 // boolean to check whether all the data from a scan has been uploaded
+    
+    // Default skip_raw2calc to 0 if not provided
+    If (ParamIsDefault(skip_raw2calc))
+        skip_raw2calc = 0
+    EndIf
+    
+    // Verify that necessary parameters are set before proceeding
+    If (S.samplingFreq == 0 || S.numADCs == 0 || S.numptsx == 0)
+        Abort "ERROR[scfd_SendCommandAndRead]: Not enough info in ScanVars to run scan"
+    EndIf
+    
+    // Start the sweep
+    fd_start_sweep(S, AWG_list = AWG_list)
+    S.lastread = -1  // Reset the last read index
+    
+    // Prepare ADC waves for recording data
+   // Make/O/N=0 adc0, adc1, adc2, adc3
+    
+    // Loop to read data until the expected number of points is reached
+    Do
+        print "running loadfiles"
+        done = loadfiles(S)  // Load data from files
+        //scfd_raw2CalcQuickDistribute()
+    	//scfd_checkSweepstate(fdID)
+        Asleep(0.1)  // Short pause to allow for data acquisition
+    While (!done)  // Continue if not all points are read
+    
+    // Update FastDAC and ADC GUI elements
+    scfw_update_all_fdac(option="updatefdac")
+    scfw_update_fadc("")  // Update FADC display with no additional specification
+    
 
-	// Check some minimum requirements
-	if (S.samplingFreq == 0 || S.numADCs == 0 || S.numptsx == 0)
-		abort "ERROR[scfd_SendCommandAndRead]: Not enough info in ScanVars to run scan"
-	endif
-	
-	fd_start_sweep(S, AWG_list=AWG_list)
-	scfd_RecordBuffer(S, rowNum, totalByteReturn, skip_raw2calc=skip_raw2calc)
-   
 
-	
-//	for(i=0;i<itemsinlist(S.instrIDs);i++)
-//		fdIDname = stringfromlist(i, S.instrIDs)
-//		nvar fdID = $fdIDname
-//		endstr = readInstr(fdID) // would be useful to check in silvia branch if the response is different, here it is a blank string 
-//		endstr = sc_stripTermination(endstr,"\r\n")	
-//		if (S.readVsTime)
-//			scf_checkFDResponse(endstr,cmd_sent,isString=1,expectedResponse="READ_FINISHED")
-//			// No need to update DACs
-//		else
-//			scf_checkFDResponse(endstr,cmd_sent,isString=1,expectedResponse="RAMP_FINISHED") // getting a bad response here 
-//	   
-//	   		// update DAC values in window (request values from FastDAC directly in case ramp failed)
-//			 // get fdacoutput is likely failing here. 
-//		endif
-//	endfor
-
-	// when scan is done update all DAC and ADC values
-scfw_update_all_fdac(option="updatefdac")
-scfw_update_fadc("")
-
-//	if(AWG_list.use_awg == 1)  // Reset AWs back to zero (no reason to leave at end of AW)
-//		for(i=0;i<itemsinlist(S.instrIDs);i++)
-//			fdIDname = stringfromlist(i, S.instrIDs)
-//			nvar fdID = $fdIDname
-//			string AW_dacs = scu_getDeviceChannels(fdID, AWG_list.channels_AW0)
-//			AW_dacs = addlistitem(scu_getDeviceChannels(fdID, AWG_list.channels_AW1), AW_dacs, ",", INF)
-//			AW_dacs = removeSeperator(AW_dacs, ",")
-//			AW_dacs = scu_getDeviceChannels(fdID, AW_dacs, reversal = 1)
-//			rampmultiplefdac(fdID, AW_dacs, 0)
-//		endfor
-//	endif
+	//	if(AWG_list.use_awg == 1)  // Reset AWs back to zero (no reason to leave at end of AW)
+	//		for(i=0;i<itemsinlist(S.instrIDs);i++)
+	//			fdIDname = stringfromlist(i, S.instrIDs)
+	//			nvar fdID = $fdIDname
+	//			string AW_dacs = scu_getDeviceChannels(fdID, AWG_list.channels_AW0)
+	//			AW_dacs = addlistitem(scu_getDeviceChannels(fdID, AWG_list.channels_AW1), AW_dacs, ",", INF)
+	//			AW_dacs = removeSeperator(AW_dacs, ",")
+	//			AW_dacs = scu_getDeviceChannels(fdID, AW_dacs, reversal = 1)
+	//			rampmultiplefdac(fdID, AW_dacs, 0)
+	//		endfor
+	//	endif
 end
+
+//Function TestTask(s)		// This is the function that will be called periodically
+//	STRUCT WMBackgroundStruct &s
+//	
+//	Printf "Task %s called, ticks=%d\r", s.name, s.curRunTicks
+//	loadfiles("adc1;adc3")
+//	return 0	// Continue background task
+//End
+//
+//Function StartTestTask()
+//	Variable numTicks = 2 * 60		// Run every two seconds (120 ticks)
+//	CtrlNamedBackground Test, period=numTicks, proc=TestTask
+//	CtrlNamedBackground Test, start
+//End
+//
+//Function StopTestTask()
+//	CtrlNamedBackground Test, stop
+//End
+
+function loadfiles(S)
+	// adcnames is the SEMI-colon-separated list of wavenames into which the columns will be loaded.
+	// The following must exist before loadfiles is run:
+	// - The waves in adcnames into which the data will be loaded--and must have the right length to accomodate all arriving data
+	// - The path fdtest of the folder that contains files to be loaded
+	// - The variable lastread containing the number of the last file that was loaded
+	  struct ScanVars &S
+	  string adcnames=S.adcLists;
+	variable timer=startmsTimer //this timer, stored under the label "timer", is just for diagnostic purposes
+	string filelist = indexedfile(fdtest,-1,".dat") //list of filenames with .txt extension that are currently existing in the path fdtest
+	string currentfile, teststring
+	variable numpnts_read
+	variable lastread // the last file that was loaded
+	lastread=S.lastread
+	variable numfiles = itemsinlist(filelist) // number of files in fdtest that have .txt extension
+	variable i=0, initpts, addpts, totpts
+	variable numadcs = itemsinlist(adcnames) // number of adc columns to be read in
+	variable adc=0
+	variable done=0 // boolean testing whether adc waves are filled with data or there is more to come
+	variable lastfile=0 // a boolean testing whether the most recent file in fdtest has already been read into Igor
+	
+	do
+		lastfile=1 // assumes that the most recent file has already been read in until proven otherwise
+		for(i=0;i<numfiles;i++) // loops through all .txt files in fdtest with index i.  This loop will break when the file after lastread is found
+			currentfile = StringFromList(i,filelist) // We are considering the i'th .txt file in fdtest.  Currentfile is the name of that file
+			teststring = "*_" + num2str(lastread+1) + ".dat" // that is is what the name of the next file to be read in will look like.  We assume the name is anything (*) then (_) then (the next integer after lastread) then .txt
+
+			if (stringmatch(currentfile, teststring)) // If the name of the i'th file matches teststring, then
+				lastread += 1 // we will reading this file in so increment the global counter of the last file read
+				LoadWave/q/O/G/D/A/N=tempwave/P=fdtest currentfile // load columns into wavenames starting with "tempwave0" and incrementing by one.  Overwrites existing tempwaves.
+				for(adc=0;adc<numadcs;adc++) // loops through the adcs we are expecting to read.  Might want to implement a check that the number of columns in the file is the same as the number we are expecting to read
+					wave oneadc=$(stringfromlist(adc,adcnames)) // declares oneadc to be the adcwave we want to concatenate data into
+					wave data2add=$("tempwave"+num2str(adc)) // declares data2add to be the adc'th copy of tempwave
+					wavestats /q oneadc
+					initpts=v_npnts
+					totpts = (v_npnts+v_numnans)
+					wavestats /q data2add
+					addpts=v_npnts
+					print "filling points from",initpts,"to",(initpts+addpts-1)
+					// concatenate/NP=0 {data2add}, oneadc //concatenates data2add onto oneadc
+					oneadc[(initpts),(initpts+addpts-1)]=data2add[p-initpts]
+					if(totpts<=(initpts+addpts))
+						done=1
+					endif
+					doupdate
+				endfor
+				lastfile=0 // we just read in a new file so perhaps the most recent file has not been read in
+				//DeleteFile /P=fdtest  /Z=1 currentfile
+				break // break out of the i<numfiles for-loop since we just read in the next file.  We need to start from the top to look for the next-next file.
+			endif
+		endfor // if we got all the way through the i<numfiles for-loop without ever finding a filename that matches teststring (the next file) then we must have read the latest one
+	while(!lastfile)
+	numpnts_read=dimsize(oneadc,0)
+	print stopMSTimer(timer)
+	print numpnts_read
+	return done
+end
+
+
 
 
 function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
@@ -2289,145 +2427,11 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 	
 end
 
-function scfd_RecordBuffer(S, rowNum, totalByteReturn, [record_only, skip_raw2calc])
-   struct ScanVars &S
-   variable rowNum, totalByteReturn
-   variable record_only // If set, then graphs will not be updated until all data has been read (defaults to 0)
-   variable skip_raw2calc // If set to 1 then there calc waves will not be reassigned based on raw
 
-	if(paramisdefault(skip_raw2calc))  // If skip_raw2calc not passed, set it to 0
-		skip_raw2calc = 0
-	endif
-	
-   // hold incoming data chunks in string and distribute to data waves
-   string buffer = ""
-   variable bytes_read = 0, totaldump = 0 
-   variable saveBuffer = 1000 // Allow getting up to 1000 bytes behind. (Note: Buffer size is 4096 bytes and cannot be changed in Igor)
-   variable bufferDumpStart = stopMSTimer(-2) 
 
-   variable bytesSec = roundNum(2*S.samplingFreq,0)
-   
-   variable read_chunk = scfd_getReadChunkSize(S.maxADCs, S.numptsx, bytesSec, totalByteReturn) //numADCs is probably wrong, it should be maxADC count I belive
-   variable panic_mode = record_only  // If Igor gets behind on reading at any point, it will go into panic mode and focus all efforts on clearing buffer.
-   variable expected_bytes_in_buffer = 0 // For storing how many bytes are expected to be waiting in buffer
- 	//read_chunk=1000
-	int i
-	string fdIDname
-	nvar sc_plotraw
- 	do
- 	   for(i=0; i<itemsinlist(S.instrIDs); i++)
- 	   	fdIDname = stringfromlist(i,S.instrIDs)
- 			nvar fdID = $fdIDname
- 	      		
-    		scfd_readChunk(fdID, read_chunk, buffer)  // puts data into buffer
-    		scfd_distributeData1(buffer, S, bytes_read, totalByteReturn, read_chunk, rowNum, fdIDname = fdIDname)
-    		scfd_checkSweepstate(fdID)
- 	      
-    		bytes_read += read_chunk      
-////    		expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)   
-//
-//       		
-//	   		if (!skip_raw2calc) // Vahid's change which is quite similar to Tim's change commentated above. 
-//				scfd_raw2CalcQuickDistribute()
-//			endif
-//   		
-//   			scg_updateFrequentGraphs() 
-// 			expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)  // Basically checking how long graph updates took
-//	 			
-//
-// 
-//    		if(!panic_mode && expected_bytes_in_buffer < saveBuffer)  // if we aren't too far behind then update Raw 1D graphs
-//    		
-////       		if(!sc_plotRaw)
 
-//  			scfd_raw2CalcQuickDistribute()
-//  			doupdate
-  			
-////       		endif
-//       		
-//       		if (!skip_raw2calc) // Vahid's change which is quite similar to Tim's change commentated above. 
-//					scfd_raw2CalcQuickDistribute()
-//				endif
-//       		
-//       		scg_updateFrequentGraphs() 
-//     			expected_bytes_in_buffer = scfd_ExpectedBytesInBuffer(bufferDumpStart, bytesSec, bytes_read)  // Basically checking how long graph updates took
-//     			
-//				if(expected_bytes_in_buffer > 4096)
-//       			printf "ERROR[scfd_RecordBuffer]: After updating graphs, buffer is expected to overflow... Expected buffer size = %d (max = 4096). Bytes read so far = %d\r" expected_bytes_in_buffer, bytes_read
-//       		elseif (expected_bytes_in_buffer > 3000)
-//					printf "WARNING[scfd_RecordBuffer]: Last graph update resulted in buffer becoming close to full (%d of 4096 bytes). Entering panic_mode (no more graph updates)\r", expected_bytes_in_buffer
-//					panic_mode = 1         
-//       		endif
-//			else
-//				if (expected_bytes_in_buffer > 3500)
-//					printf "DEBUGGING: getting behind: Expecting %d bytes in buffer (max 4096)\r" expected_bytes_in_buffer		
-//					if (panic_mode == 0)
-//						panic_mode = 1
-//						printf "WARNING[scfd_RecordBuffer]: Getting behind on reading buffer, entering panic mode (no more graph updates until end of sweep)Expecting %d bytes in buffer (max 4096)\r"  expected_bytes_in_buffer				
-//					endif			
-//				endif
-//
-//			endif
-			
-			if(i != itemsinlist(S.instrIDs)-1)
-				bytes_read -= read_chunk
-			endif
-			
-		endfor	
-	while(totalByteReturn-bytes_read > read_chunk)
- 		
- 	// do one last read if any data left to read
- 	variable bytes_left = totalByteReturn-bytes_read
- 	for(i=0; i<itemsinlist(S.instrIDs); i++)
- 		fdIDname = stringfromlist(i,S.instrIDs)
- 		nvar fdID = $fdIDname
- 		if(bytes_left > 0)
-    		scfd_readChunk(fdID, bytes_left, buffer)  // puts data into buffer
-    		scfd_distributeData1(buffer, S, bytes_read, totalByteReturn, bytes_left, rowNum, fdIDname = fdIDname)
-		endif
-		scfd_checkSweepstate(fdID)
-	endfor
-	
- 	//   variable st = stopMSTimer(-2)
- 	
-	scg_updateFrequentGraphs() 
-	
- 	//   printf "scg_updateFrequentGraphs took %.2f ms\r", (stopMSTimer(-2) - st)/1000
- 	
 
- 	return panic_mode
 
-end
-
-function scfd_ExpectedBytesInBuffer(start_time, bytes_per_sec, total_bytes_read)
-	// Calculates how many bytes are expected to be in the buffer right now
-	variable start_time  // Time at which command was sent to Fastdac in microseconds
-	variable bytes_per_sec  // How many bytes is fastdac returning per second (2*sampling rate) (Vahid: why it's multiplied by 2?)
-	variable total_bytes_read  // How many bytes have been read so far
-	
-	
-	return round(bytes_per_sec*(stopmstimer(-2)-start_time)*1e-6 - total_bytes_read)
-end
-
-function scfd_getReadChunkSize(numADCs, numpts, bytesSec, totalByteReturn)
-  // Returns the size of chunks that should be read at a time
-  variable numADCs, numpts, bytesSec, totalByteReturn
-
-//  variable read_duration = 0.05  // Make readchunk s.t. it nominally take this time to fill
-   variable read_duration = 0.05
-  variable chunksize = (round(bytesSec*read_duration) - mod(round(bytesSec*read_duration),numADCs*2))  
-
-  variable read_chunk=0
-  if(chunksize < 50)
-    chunksize = 50 - mod(50,numADCs*2)
-  endif
-  if(totalByteReturn > chunksize)
-    read_chunk = chunksize
-  else
-    read_chunk = totalByteReturn
-  endif
-  return read_chunk
-end
 
 function scfd_raw2CalcQuickDistribute()
     // Function to update graphs as data comes in temporarily, only applies the calc function for the scan 
@@ -2480,144 +2484,14 @@ function scfd_checkSweepstate(instrID)
 	endtry
 end
 
-function scfd_readChunk(instrID, read_chunk, buffer)
-  variable instrID, read_chunk
-  string &buffer
-  //buffer = readInstr(instrID, read_bytes=read_chunk, binary=1)
-  //print strlen(buffer)
-  // If failed, abort
-  if (cmpstr(buffer, "NaN") == 0)
-   // fd_stopFDACsweep(instrID)
-    abort
-  endif
-end
 
 
-function scfd_distributeData1(buffer, S, bytes_read, totalByteReturn, read_chunk, rowNum, [fdIDname])
-	// Distribute data to 1D waves only (for speed)
-  struct ScanVars &S
-  string &buffer, fdIDname  // Passing by reference for speed of execution
-  variable bytes_read, totalByteReturn, read_chunk, rowNum
-  variable direction = S.direction == 0 ? 1 : S.direction  // Default to forward
-
-  	
-  variable col_num_start
-  if (direction == 1)
-    col_num_start = bytes_read/(2*S.maxADCs)
-  elseif (direction == -1)
-    col_num_start = (totalByteReturn-bytes_read)/(2*S.maxADCs)-1
-  endif
-  scfd_distributeData2(buffer,S.adcList,read_chunk,rowNum,col_num_start, direction=direction, named_waves=S.raw_wave_names, fdIDname = fdIDname, S=S)
-end
 
 
-function scfd_updateWindow(S, numAdcs)
-	// Update the DAC and ADC values in the FastDAC window (e.g. at the end of a sweep)
-  struct ScanVars &S
-  variable numADCs
-//  // Note: This does not yet support multiple fastdacs
-//
-//  scu_assertSeparatorType(S.channelsx, ",")
-//  scu_assertSeparatorType(S.finxs, ",")
-//  scu_assertSeparatorType(S.adcList, ";")
-//
-//  wave/T fdacvalstr
-//
-//  variable i, device_num
-//  string channel, device_channel, fdIDname
-//  for(i=0;i<itemsinlist(S.channelsx,",");i+=1)
-//   channel = stringfromlist(i,S.channelsx,",")
-//   fdIDname = stringfromlist(i,S.daclistIDs)
-//   nvar fdID = $fdIDname
-//	//*device_channel = scf_getChannelNumsOnFD(channel, device_num)  // Get channel for specific fastdac (and device_num of that fastdac)
-////	if (cmpstr(scf_getFDVisaAddress(device_num), getResourceAddress(fdID)) != 0)
-////		print("ERROR[scfd_updateWindow]: channel device address doesn't match instrID address")
-////	else
-////		scfw_updateFdacValStr(str2num(channel), getFDACOutput(fdID, str2num(device_channel)), update_oldValStr=1)  // + scf_getChannelStartNum( scf_getFDVisaAddress(device_num))
-////	endif
-//  endfor
-//
-//  variable channel_num
-//  
-//  for(i=0;i<numADCs;i+=1)
-//    channel_num = str2num(stringfromlist(i,S.adclist,";"))
-//    fdIDname = stringfromlist(i,S.ADClistIDs)  //attempt
-//   
-//    //getfadcChannel(S.instrIDx,channel_num, len_avg=0.001)  // This updates the window when called
-//    //*getfadcChannel(channel_num, len_avg=0.001)  // attempt
-//  endfor
 
 
-end
 
 
-function scfd_distributeData2(buffer,adcList,bytes,rowNum,colNumStart,[direction, named_waves, fdIDname, S])  // TODO: rename
-	// Distribute data to 1D waves only (for speed)
-	// Note: This distribute data can be called within the 1D sweep, updating 2D waves should only be done outside of fastdac sweeps because it can be slow
-	struct Scanvars &S
-	string &buffer, adcList, fdIDname  //passing buffer by reference for speed of execution
-	variable bytes, rowNum, colNumStart, direction
-	string named_waves
-	wave/t fadcvalstr
-
-	variable i
-	direction = paramisdefault(direction) ? 1 : direction
-	if (!(direction == 1 || direction == -1))  // Abort if direction is not 1 or -1
-		abort "ERROR[scfd_distributeData2]: Direction must be 1 or -1"
-	endif
-	
-	/// rewrite ////////////////////////////////////////////////////////////////////////////////////////////////
-	variable j, k, dataPoint
-	string wave1d, s1, s2
-	
-	nvar /z fdID = $fdIDname
-	string adcs = stringbyKey(fdIDname, S.adclists)
-	variable numADCCh = strlen(adcs)
-	string fake = stringbykey(FdIDname, S.fakerecords)
-	string waveslist = ""
-	
-	if (!paramisDefault(named_waves) && strlen(named_waves) > 0)  // Use specified wavenames instead of default ADC#
-		///This is used for the update ADC button in the fastDAC window
-		numADCCh = itemsinlist(adcList)
-		scu_assertSeparatorType(named_waves, ";")
-		if (itemsInList(named_waves) != numADCch)
-			abort "ERROR[scfd_distributeData2]: wrong number of named_waves for numADCch being recorded"
-		endif
-		waveslist = named_waves
-		// load data into raw wave
-		for(i=0;i<numADCCh;i+=1)
-			wave1d = stringFromList(i, waveslist)
-			wave rawwave = $wave1d
-			k = 0
-			for(j=0;j<bytes;j+=numADCCh*2)
-			// convert to floating point
-				s1 = buffer[j + (i*2)]
-				s2 = buffer[j + (i*2) + 1]
-				//*datapoint = fd_Char2Num(s1, s2)
-				rawwave[colNumStart+k] = dataPoint
-				k += 1*direction
-			endfor
-		endfor
-	else
-		for(i=0;i<numADCCh;i++)
-			if(strsearch(fake,adcs[i],0) == -1) /// this should imply we want to distribute the data
-				//*wave1d = scu_getDeviceChannels(fdID, adcs[i], adc_flag=1, reversal=1)
-				wave1d = "ADC" + wave1d
-				wave rawwave = $wave1d
-				k = 0
-				for(j=0;j<bytes;j+=numADCCh*2)
-					// convert to floating point
-					s1 = buffer[j + (i*2)]
-					s2 = buffer[j + (i*2) + 1]
-					//*datapoint = fd_Char2Num(s1, s2)
-					rawwave[colNumStart+k] = dataPoint
-					k += 1*direction
-				endfor
-			endif
-		endfor
-	endif
-	
-	
 
 	
 	////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2674,4 +2548,336 @@ function scw_updatewindow(action) : ButtonControl
 	string action
 
 	//*scw_saveConfig(scw_createConfig())   // write a new config file
+end
+
+
+function/s scw_createConfig()
+	wave/t sc_RawWaveNames, sc_RawScripts, sc_CalcWaveNames, sc_CalcScripts, sc_Instr
+	wave sc_RawRecord, sc_measAsync, sc_CalcRecord, sc_RawPlot, sc_CalcPlot
+	nvar sc_PrintRaw, sc_PrintCalc, filenum, sc_cleanup
+	svar sc_hostname
+	variable refnum
+	string configfile
+	string configstr = "", tmpstr = ""
+
+	// information about the measurement computer
+	tmpstr = addJSONkeyval(tmpstr, "hostname", sc_hostname, addQuotes = 1)
+	string sysinfo = igorinfo(3)
+	tmpstr = addJSONkeyval(tmpstr, "OS", StringByKey("OS", sysinfo), addQuotes = 1)
+	tmpstr = addJSONkeyval(tmpstr, "IGOR_VERSION", StringByKey("IGORFILEVERSION", sysinfo), addQuotes = 1)
+	
+	
+	configstr = addJSONkeyval(configstr, "system_info", tmpstr)
+
+	// log instrument info
+	configstr = addJSONkeyval(configstr, "instruments", textWave2StrArray(sc_Instr))  /// <<<<<<<< I think some thing with textwave2strarray is broken... seems like a lot of the logs are lost after this
+
+	// wave names
+	tmpstr = ""
+	tmpstr = addJSONkeyval(tmpstr, "raw", textWave2StrArray(sc_RawWaveNames))
+	tmpstr = addJSONkeyval(tmpstr, "calc", textWave2StrArray(sc_CalcWaveNames))
+	configstr = addJSONkeyval(configstr, "wave_names", tmpstr)
+
+	// record checkboxes
+	tmpstr = ""
+	tmpstr = addJSONkeyval(tmpstr, "raw", wave2BoolArray(sc_RawRecord))
+	tmpstr = addJSONkeyval(tmpstr, "calc", wave2BoolArray(sc_CalcRecord))
+	configstr = addJSONkeyval(configstr, "record_waves", tmpstr)
+
+	// record checkboxes
+	tmpstr = ""
+	tmpstr = addJSONkeyval(tmpstr, "raw", wave2BoolArray(sc_RawPlot))
+	tmpstr = addJSONkeyval(tmpstr, "calc", wave2BoolArray(sc_CalcPlot))
+	configstr = addJSONkeyval(configstr, "plot_waves", tmpstr)
+
+	// async checkboxes
+	configstr = addJSONkeyval(configstr, "meas_async", wave2BoolArray(sc_measAsync))
+
+	// scripts
+	tmpstr = ""
+	tmpstr = addJSONkeyval(tmpstr, "raw", textWave2StrArray(sc_RawScripts))
+	tmpstr = addJSONkeyval(tmpstr, "calc", textWave2StrArray(sc_CalcScripts))
+	configstr = addJSONkeyval(configstr, "scripts", tmpstr)
+
+	// print_to_history
+	tmpstr = ""
+	tmpstr = addJSONkeyval(tmpstr, "raw", num2bool(sc_PrintRaw))
+	tmpstr = addJSONkeyval(tmpstr, "calc", num2bool(sc_PrintCalc))
+	configstr = addJSONkeyval(configstr, "print_to_history", tmpstr)
+
+	// FastDac if it exists
+	WAVE/Z fadcvalstr
+	if( WaveExists(fadcvalstr) )
+		variable i = 0
+		wave fadcattr
+		make/o/free/n=(dimsize(fadcattr, 0)) tempwave
+		
+		string fdinfo = ""
+		duplicate/o/free/r=[][0] fadcvalstr tempstrwave
+		fdinfo = addJSONkeyval(fdinfo, "ADCnums", textwave2strarray(tempstrwave))
+
+		duplicate/o/free/r=[][1] fadcvalstr tempstrwave
+		fdinfo = addJSONkeyval(fdinfo, "ADCvals", textwave2strarray(tempstrwave))
+		
+		tempwave = fadcattr[p][2]
+		for (i=0;i<numpnts(tempwave);i++)
+			tempwave[i] =	tempwave[i] == 48 ? 1 : 0
+		endfor
+
+		fdinfo = addJSONkeyval(fdinfo, "record", wave2boolarray(tempwave))
+		
+		duplicate/o/free/r=[][3] fadcvalstr tempstrwave
+		fdinfo = addJSONkeyval(fdinfo, "calc_name", textwave2strarray(tempstrwave))
+		
+		duplicate/o/free/r=[][4] fadcvalstr tempstrwave
+		fdinfo = addJSONkeyval(fdinfo, "calc_script", textwave2strarray(tempstrwave))
+
+
+		configstr = addJSONkeyval(configstr, "FastDAC", fdinfo)
+	endif
+
+	configstr = addJSONkeyval(configstr, "filenum", num2istr(filenum))
+	
+	configstr = addJSONkeyval(configstr, "cleanup", num2istr(sc_cleanup))
+
+	return configstr
+end
+
+
+function scw_saveConfig(configstr)
+	string configstr
+	svar sc_current_config
+
+	string filename = "sc" + num2istr(scu_unixTime()) + ".json"
+//	writetofile(prettyJSONfmt(configstr), filename, "config")
+	writetofile(configstr, filename, "config")
+	sc_current_config = filename
+end
+
+
+function scw_loadConfig(configfile)
+	string configfile
+	string jstr
+	nvar sc_PrintRaw, sc_PrintCalc
+	svar sc_current_config
+
+	// load JSON string from config file
+	printf "Loading configuration from: %s\n", configfile
+	sc_current_config = configfile
+	jstr = readtxtfile(configfile,"config")
+
+	// instruments
+	loadStrArray2textWave(getJSONvalue(jstr, "instruments"), "sc_Instr")
+
+	// waves
+	loadStrArray2textWave(getJSONvalue(jstr,"wave_names:raw"),"sc_RawWaveNames")
+	loadStrArray2textWave(getJSONvalue(jstr,"wave_names:calc"),"sc_CalcWaveNames")
+
+	// record checkboxes
+	loadBoolArray2wave(getJSONvalue(jstr,"record_waves:raw"),"sc_RawRecord")
+	loadBoolArray2wave(getJSONvalue(jstr,"record_waves:calc"),"sc_CalcRecord")
+
+	// plot checkboxes
+	loadBoolArray2wave(getJSONvalue(jstr,"plot_waves:raw"),"sc_RawPlot")
+	loadBoolArray2wave(getJSONvalue(jstr,"plot_waves:calc"),"sc_CalcPlot")
+
+	// async checkboxes
+	loadBoolArray2wave(getJSONvalue(jstr,"meas_async"),"sc_measAsync")
+
+	// print_to_history
+	loadBool2var(getJSONvalue(jstr,"print_to_history:raw"),"sc_PrintRaw")
+	loadBool2var(getJSONvalue(jstr,"print_to_history:calc"),"sc_PrintCalc")
+
+	// scripts
+	loadStrArray2textWave(getJSONvalue(jstr,"scripts:raw"),"sc_RawScripts")
+	loadStrArray2textWave(getJSONvalue(jstr,"scripts:calc"),"sc_CalcScripts")
+
+	//filenum
+	loadNum2var(getJSONvalue(jstr,"filenum"),"filenum")
+	
+	//cleanup
+	loadNum2var(getJSONvalue(jstr,"cleanup"),"sc_cleanup")
+
+	// reload ScanController window
+	//*scw_rebuildwindow()
+end
+
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////  Data/Experiment Saving   //////////////////////////////////////////////////////// (sce_...) ScanControllerEnd...
+////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function EndScan([S, save_experiment, aborting, additional_wavenames])
+	// Ends a scan:
+	// Saves/Loads current/last ScanVars from global waves
+	// Closes sweepcontrol if open
+	// Save Metadata into HDF files
+	// Saves Measured data into HDF files
+	// Saves experiment
+
+	Struct ScanVars &S  // Note: May not exist so can't be relied upon later
+	variable save_experiment
+	variable aborting
+	string additional_wavenames // Any additional wavenames to be saved in the DatHDF (and copied in Igor)
+	
+//	scfd_checkRawSave()
+//	set_indep()
+//	save_experiment = paramisDefault(save_experiment) ? 1 : save_experiment
+//	additional_wavenames = SelectString(ParamIsDefault(additional_wavenames), additional_wavenames, "")
+//	
+//	if(!paramIsDefault(S))
+//		scv_setLastScanVars(S)  // I.e save the ScanVars including end_time and any other changed values in case saving fails (which it often does)
+//	endif
+//	
+//	Struct ScanVars S_ // Note: This will definitely exist for the rest of this function
+//	scv_getLastScanVars(S_)
+//
+//	if (aborting)
+//		S_.end_time = datetime
+//		S_.comments = "aborted, " + S_.comments
+//	endif
+//	if (S_.end_time == 0 || numtype(S_.end_time) != 0) // Should have already been set, but if not, this is likely a good guess and prevents a stupid number being saved
+//		S_.end_time = datetime
+//		S_.comments = "end_time guessed, "+S_.comments
+//	endif
+//	
+//	nvar filenum
+//	S_.filenum = filenum
+//
+//	dowindow/k SweepControl // kill scan control window
+//	printf "Time elapsed: %.2f s \r", (S_.end_time-S_.start_time)
+//	HDF5CloseFile/A 0 //Make sure any previously opened HDFs are closed (may be left open if Igor crashes)
+//	
+//	if(S_.using_fastdac == 0)
+//		KillDataFolder/z root:async // clean this up for next time
+//	endif
+//	SaveToHDF(S_, additional_wavenames=additional_wavenames)
+//
+//	nvar sc_save_time
+//	if(save_experiment==1 && (datetime-sc_save_time)>180.0)
+//		// save if save_exp=1 and if more than 3 minutes has elapsed since previous saveExp
+//		saveExp()
+//		sc_save_time = datetime
+//	endif
+//
+//	if(sc_checkBackup())  	// check if a path is defined to backup data
+//		 sc_copyNewFiles(S_.filenum, save_experiment=save_experiment)		// copy data to server mount point (nvar filenum gets incremented after HDF is opened)
+//	endif
+//
+//	// add info about scan to the scan history file in /config
+//	sce_ScanVarsToJson(S_, getrtstackinfo(3), save_to_file=1)
+end
+
+
+function SaveNamedWaves(wave_names, comments)
+	// Saves a comma separated list of wave_names to HDF under DatXXX.h5
+	string wave_names, comments
+	
+	nvar filenum
+	variable current_filenum = filenum
+	variable ii=0
+	string wn
+	// Check that all waves trying to save exist
+	for(ii=0;ii<itemsinlist(wave_names, ",");ii++)
+		wn = stringfromlist(ii, wave_names, ",")
+		if (!exists(wn))
+			string err_msg
+			sprintf err_msg, "WARNING[SaveWaves]: Wavename %s does not exist. No data saved\r", wn
+			abort err_msg
+		endif
+	endfor
+
+	// Only init Save file after we know that the waves exist
+	variable hdfid
+	hdfid = OpenHDFFile(0) // Open HDF file (normal - non RAW)
+
+	addMetaFiles(num2str(hdfid), logs_only=1, comments=comments)
+
+	printf "Saving waves [%s] in dat%d.h5\r", wave_names, filenum
+
+	// Now save each wave
+	for(ii=0;ii<itemsinlist(wave_names, ",");ii++)
+		wn = stringfromlist(ii, wave_names, ",")
+		SaveSingleWaveToHDF(wn, hdfid)
+	endfor
+	CloseHDFFile(num2str(hdfid))
+	
+	//*if(sc_checkBackup())  	// check if a path is defined to backup data
+		//sc_copyNewFiles(current_filenum, save_experiment=0)		// copy data to server mount point (nvar filenum gets incremented after HDF is opened)
+	//endif
+		
+	filenum += 1 
+end
+
+
+function/T sce_ScanVarsToJson(S, traceback, [save_to_file])
+	// Can be used to save Function calls to a text file
+	Struct ScanVars &S
+	string traceback
+	variable save_to_file  // Whether to save to .txt file
+	
+	// create JSON string
+	string buffer = ""
+	
+	buffer = addJSONkeyval(buffer,"Filenum",num2istr(S.filenum))
+	buffer = addJSONkeyval(buffer,"Traceback",traceback,addquotes=1)  // TODO: Remove everything from EndScan onwards (will always be the same and gives no useful extra info)
+	buffer = addJSONkeyval(buffer,"x_label",S.x_label,addquotes=1)
+	buffer = addJSONkeyval(buffer,"y_label",S.y_label,addquotes=1)
+	buffer = addJSONkeyval(buffer,"startx", num2str(S.startx))
+	buffer = addJSONkeyval(buffer,"finx",num2str(S.finx))
+	buffer = addJSONkeyval(buffer,"numptsx",num2istr(S.numptsx))
+	buffer = addJSONkeyval(buffer,"channelsx",S.channelsx,addquotes=1)
+	buffer = addJSONkeyval(buffer,"rampratex",num2str(S.rampratex))
+	buffer = addJSONkeyval(buffer,"delayx",num2str(S.delayx))
+
+	buffer = addJSONkeyval(buffer,"is2D",num2str(S.is2D))
+	buffer = addJSONkeyval(buffer,"starty",num2str(S.starty))
+	buffer = addJSONkeyval(buffer,"finy",num2str(S.finy))
+	buffer = addJSONkeyval(buffer,"numptsy",num2istr(S.numptsy))
+	buffer = addJSONkeyval(buffer,"channelsy",S.channelsy,addquotes=1)
+	buffer = addJSONkeyval(buffer,"rampratey",num2str(S.rampratey))
+	buffer = addJSONkeyval(buffer,"delayy",num2str(S.delayy))
+	
+	buffer = addJSONkeyval(buffer,"duration",num2str(S.duration))
+	buffer = addJSONkeyval(buffer,"alternate",num2istr(S.alternate))	
+	buffer = addJSONkeyval(buffer,"readVsTime",num2str(S.readVsTime))
+	buffer = addJSONkeyval(buffer,"interlaced_y_flag",num2str(S.interlaced_y_flag))
+	buffer = addJSONkeyval(buffer,"interlaced_channels",S.interlaced_channels,addquotes=1)
+	buffer = addJSONkeyval(buffer,"interlaced_setpoints",S.interlaced_setpoints,addquotes=1)
+	buffer = addJSONkeyval(buffer,"interlaced_num_setpoints",num2str(S.interlaced_num_setpoints))
+	
+	buffer = addJSONkeyval(buffer,"start_time",num2str(S.start_time, "%.2f"))
+	buffer = addJSONkeyval(buffer,"end_time",num2str(S.end_time,"%.2f"))
+	buffer = addJSONkeyval(buffer,"using_fastdac",num2str(S.using_fastdac))
+	buffer = addJSONkeyval(buffer,"comments",S.comments,addquotes=1)
+
+	buffer = addJSONkeyval(buffer,"numADCs",num2istr(S.numADCs))
+	buffer = addJSONkeyval(buffer,"samplingFreq",num2str(S.samplingFreq))
+	buffer = addJSONkeyval(buffer,"measureFreq",num2str(S.measureFreq))
+	buffer = addJSONkeyval(buffer,"sweeprate",num2str(S.sweeprate))
+	buffer = addJSONkeyval(buffer,"adcList",S.adcList,addquotes=1)
+	buffer = addJSONkeyval(buffer,"startxs",S.startxs,addquotes=1)
+	buffer = addJSONkeyval(buffer,"finxs",S.finxs,addquotes=1)
+	buffer = addJSONkeyval(buffer,"startys",S.startys,addquotes=1)
+	buffer = addJSONkeyval(buffer,"finys",S.finys,addquotes=1)
+
+	buffer = addJSONkeyval(buffer,"raw_wave_names",S.raw_wave_names,addquotes=1)
+	
+	
+	buffer = prettyJSONfmt(buffer)
+	
+	if (save_to_file)
+		// open function call history file (or create it)
+		variable hisfile
+		open /z/a/p=config hisfile as "FunctionCallHistory.txt"
+		
+		if(v_flag != 0)
+			print "[WARNING] \"saveFuncCall\": Could not open FunctionCallHistory.txt"
+		else
+			fprintf hisfile, buffer
+			fprintf hisfile, "------------------------------------\r\r"
+			
+			close hisfile
+		endif
+	endif
+	return buffer
 end

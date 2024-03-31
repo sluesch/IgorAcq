@@ -523,6 +523,12 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
 	S.duration = duration
    S.adcList = scf_getRecordedFADCinfo("channels")
    S.using_fastdac = 1
+   S.adcLists=scf_getRecordedFADCinfo("raw_names")
+   S.raw_wave_names=scf_getRecordedFADCinfo("raw_names")
+   svar fd
+   S.instrIDs=fd
+
+   
 
 //   	// Sets channelsx, channelsy to be lists of channel numbers instead of labels
    scv_setChannels(S, channelsx, channelsy, fastdac=1)  
