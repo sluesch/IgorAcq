@@ -115,7 +115,7 @@ function addMetaFiles(hdf5_id_list, [S, logs_only, comments])
 	
 	if (!logs_only)
 		make /FREE /T /N=1 sweep_logs = prettyJSONfmt(sc_createSweepLogs(S=S))
-		make /free /T /N=1 instr_logs=sc_instrumentLogs()  // Modifies the jstr to add Instrumt Status (from ScanController Window)
+		make /free /T /N=1 instr_logs=prettyJSONfmt(sc_instrumentLogs()) // Modifies the jstr to add Instrumt Status (from ScanController Window)
 		make /FREE /T /N=1 scan_vars_json = sce_ScanVarsToJson(S, getrtstackinfo(3), save_to_file = 0)
 	else
 		make /FREE /T /N=1 sweep_logs = prettyJSONfmt(sc_createSweepLogs(comments = comments))
