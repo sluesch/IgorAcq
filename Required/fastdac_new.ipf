@@ -50,7 +50,7 @@ end
 
 function initFastDAC()
 wave/t ADC_channel, DAC_channel, DAC_label
-
+getFDIDs()
 
 	// hardware limit (mV)
 	variable i=0, numDevices = dimsize(ADC_channel,0)/4
@@ -557,10 +557,51 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
    		S.channelsy = scu_getChannelNumbers(channelsy)				// converting from channel labels to numbers
 		S.y_label = scu_getDacLabel(S.channelsy)						// setting the y_label
    endif
-   print S                                                        
+scv_setLastScanVars(S)
 end
 
 
+function/s getFDstatus()
+struct ScanVars S
+scv_getLastScanVars(S)
+variable numDACCh, numADCCh 
+
+svar fd
+	string  buffer = "", key = ""
+	wave/t fdacvalstr	
+	wave/t fadcvalstr	
+	wave/t ADC_channel
+	string FDID_list=TextWavetolist(ADC_channel)
+	
+		
+	buffer = addJSONkeyval(buffer, "http_address",fd, addquotes=1)
+	buffer = addJSONkeyval(buffer, "FDs_used (ADC list)",FDID_list , addquotes=0)
+
+	buffer = addJSONkeyval(buffer, "SamplingFreq", num2str(S.samplingFreq), addquotes=0)
+	buffer = addJSONkeyval(buffer, "MeasureFreq", num2str(S.measureFreq), addquotes=0)
+
+
+	variable i
+
+	// update DAC values
+	numDACCh=scfw_update_fdac("updatefdac")
+	for(i=0;i<numDACCh;i+=1)
+		sprintf key, "DAC%d{%s}",i, fdacvalstr[i][3]
+		buffer = addJSONkeyval(buffer, key, fdacvalstr[i][1]) // getfdacOutput is PER instrument
+	endfor
+	
+// update ADC values
+	numADCCh=scfw_update_fadc("")
+	for(i=0;i<numADCCh;i+=1)
+		buffer = addJSONkeyval(buffer, "ADC"+num2str(i), fadcvalstr[i][1]) // getfdacOutput is PER instrument
+	endfor	 
+
+//	
+//	
+//	// AWG info
+//	buffer = addJSONkeyval(buffer, "AWG", getFDAWGstatus())  //NOTE: AW saved in getFDAWGstatus()
+return buffer
+end
 
 ///////////////////////
 //// API functions ////
@@ -614,6 +655,7 @@ end
 //	String response = postHTTP(fd, cmd, payload, headers)
 //	print response
 //end
+
 
 function fd_stopFDACsweep()
 //svar fd
@@ -699,4 +741,15 @@ function fd_getmaxADCs(S)
 	S.numADCs=dimsize(numericwave,0)
 	return maxADCs
 end
+
+function getFDIDs()
+	//ADC_channel has to exist for this to work
+	//creates string wave FDIDs and sting list FDIDs_list
+	wave/t ADC_channel
+	ConvertTxtWvToNumWv(ADC_channel); /// creates numerical wave out of ADC_channel
+	wave numconvert
+	matrixop/o rounded=round(numconvert)
+	FDecimate(rounded, "FDIDs", 4)	
+end
+
 

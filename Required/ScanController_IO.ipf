@@ -248,7 +248,7 @@ function sc_instrumentLogs(jstr)
 				JSONSimple sc_log_buffer
 				wave/t t_tokentext
 				wave w_tokentype, w_tokensize, w_tokenparent
-	
+	print t_tokentext
 				for(j=1;j<numpnts(t_tokentext)-1;j+=1)
 					if ( w_tokentype[j]==3 && w_tokensize[j]>0 )
 						if( w_tokenparent[j]==0 )
@@ -1731,6 +1731,7 @@ function/s TextWavetolist(w)
 
 	for (i=0; i<n; i++)
 		list += w[i] + ";"
+
 	endfor
 	list = list[0,strlen(list)-2] // remove last semicolon
 	return list
@@ -1751,6 +1752,18 @@ function /s numWavetolist(w)
 	list = list[0,strlen(list)-2] // remove last semicolon
 	return list
 end
+
+Function ConvertNumWvToTxtWv(W)
+Wave W
+Make /T /O /N=(numpnts(W)) TxtConvert
+TxtConvert[] = num2str(W[p])
+End
+ 
+Function ConvertTxtWvToNumWv(W)
+Wave /T W
+Make /O /N=(numpnts(W)) NumConvert
+NumConvert[] = str2num(W[p])
+End
 
 function/s addJSONkeyval(JSONstr,key,value,[addquotes])
 	// returns a valid JSON string with a new key,value pair added.

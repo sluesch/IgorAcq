@@ -272,6 +272,7 @@ function scfw_update_fadc(action) : ButtonControl
 		temp= get_one_FADCChannel(i)
 		fadcvalstr[i][1] = num2str(temp)
 	endfor
+	return numADCCh
 end
 
 
@@ -280,7 +281,9 @@ function scfw_update_fdac(action) : ButtonControl
 	svar sc_fdackeys
 	wave/t fdacvalstr
 	wave/t old_fdacvalstr
-	scfw_update_all_fdac(option=action)
+	variable numDACCh
+	numDACCh=scfw_update_all_fdac(option=action)
+	return numDACCh
 end
 
 
@@ -346,6 +349,8 @@ function scfw_update_all_fdac([option])
 				// silent abort
 				abortonvalue 1,10
 			endtry
+			
+			return numDACCh
 		
 	
 end
@@ -507,88 +512,8 @@ Function/S scu_getChannelNumbers(string channels)
 End
 
 
-function scv_setLastScanVars(S) 
-	// Save the ScanVars to global waves so that they can be loaded later
-	Struct ScanVars &S
-	
-	if (!S.never_save)
-		variable st = S.start_time
-		S.start_time = st == 0 ? datetime : S.start_time  // Temporarily make a start_time so at least something is saved in case of abort	 
-		
-		// Writing in chunks of 5 just to make it easier to count and keep track of them
-		make/o/T sc_lastScanVarsStrings = {\
-			S.channelsx, S.channelsy, S.x_label, S.y_label, S.comments,\
-			S.adcList, S.startxs, S.finxs, S.startys, S.finys,\
-			S.interlaced_channels, S.interlaced_setpoints, S.raw_wave_names, S.adcList\
-			}
-		make/o/d sc_lastScanVarsVariables = {\
-			S.instrIDx, S.instrIDy, S.lims_checked, S.startx, S.finx, S.numptsx,\
-		 	S.rampratex, S.delayx, S.is2d, S.starty, S.finy,\
-		 	S.numptsy, S.rampratey, S.delayy, S.alternate, S.duration,\
-		 	S.readVsTime, S.start_time, S.end_time, S.using_fastdac, S.numADCs,\
-		 	S.samplingFreq, S.measureFreq, S.sweeprate, S.direction, S.never_save,\
-		 	S.filenum, S.interlaced_y_flag, S.interlaced_num_setpoints\
-		 	}
-		
-		S.start_time = st  // Restore to whatever it was before	
-	endif
-end
 
 
-function scv_getLastScanVars(S)   
-	// Makde ScanVars from the global waves that are created when calling scv_setLastScanVars(S)
-	Struct ScanVars &S
-	// Note: can't just use StructPut/Get because they only work for numeric entries, not strings...
-	wave/T t = sc_lastScanVarsStrings
-	wave v = sc_lastScanVarsVariables
-	
-	// Load String parts
-	S.channelsx = t[0]
-	S.channelsy = t[1]
-	S.x_label = t[2]
-	S.y_label = t[3]
-	S.comments = t[4]
-	S.adcList = t[5]
-	S.startxs = t[6]
-	S.finxs = t[7]
-	S.startys = t[8]
-	S.finys = t[9]
-	S.interlaced_channels = t[10]
-	S.interlaced_setpoints = t[11]
-	S.raw_wave_names = t[12]
-	S.adcList = t[13]
-
-	// Load Variable parts
-	S.instrIDx = v[0]
-	S.instrIDy = v[1]
-	S.lims_checked = v[2]
-	S.startx = v[3]
-	S.finx = v[4]
-	S.numptsx = v[5]
-	S.rampratex = v[6]
-	S.delayx = v[7]
-	S.is2d = v[8]
-	S.starty = v[9]
-	S.finy = v[10]
-	S.numptsy = v[11]
-	S.rampratey = v[12]
-	S.delayy = v[13]
-	S.alternate = v[14]
-	S.duration = v[15]
-	S.readVsTime = v[16]
-	S.start_time = v[17]
-	S.end_time = v[18]
-	S.using_fastdac = v[19]
-	S.numADCs = v[20]
-	S.samplingFreq = v[21]
-	S.measureFreq = v[22]
-	S.sweeprate = v[23]
-	S.direction = v[24]
-	S.never_save = v[25]
-	S.filenum = v[26]
-	S.interlaced_y_flag = v[27]
-	S.interlaced_num_setpoints = v[28]
-end
 	
 function initScanVars(S, [instrIDx, startx, finx, channelsx, numptsx, delayx, rampratex, instrIDy, starty, finy, channelsy, numptsy, rampratey, delayy, x_label, y_label, startxs, finxs, startys, finys, alternate, interlaced_channels, interlaced_setpoints, comments])
     // Initializes scanning parameters within a ScanVars struct for both 1D and 2D scanning operations.
@@ -854,7 +779,7 @@ function scv_setSetpoints(S, itemsx, startx, finx, itemsy, starty, finy, startxs
 			S.IDstartxs = ReplaceStringByKey(StringFromList(i, S.channelsx), S.IDstartxs, StringBykey(StringFromList(i, S.channelsx), S.IDstartxs) + "," + StringFromList(i, starts, ","))
 			S.IDfinxs = ReplaceStringByKey(StringFromList(i, S.channelsx), S.IDfinxs, StringBykey(StringFromList(i, S.channelsx), S.IDfinxs) + "," + StringFromList(i, fins, ","))
 		EndFor
-print S
+
 		S.startxs = starts
 		S.finxs = fins
 	ElseIf (Strlen(startxs) > 0 && Strlen(finxs) > 0)   // Multiple start/end points provided
@@ -934,7 +859,6 @@ end
 function scv_setFreq([S,A])
 	// Set S.samplingFreq, S.numADCs, S.measureFreq
 	// measureFreq is set now based on maxADCs (numADCs per fastDAC selected for recording)
-	// an error should be  thrown if multiple fastDACS are used but are not set to the same speed.
 	// for now assume all ADC are set to max speed
 	
 	Struct ScanVars &S
@@ -1938,18 +1862,18 @@ function scfd_resampleWaves(w, measureFreq, targetFreq)
 
 
 	RatioFromNumber (targetFreq / measureFreq)
-	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=3 w
+	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=1 w
 
 //	print "Num and den are",v_numerator, v_denominator
 	if (V_numerator > V_denominator)
 		string cmd
-		print "Resampling would increase number of datapoints, not decrease, therefor resampling is skipped"
+		//print "Resampling would increase number of datapoints, not decrease, therefore resampling is skipped"
 		duplicate/o w_before w
 
 	endif
 	// TODO: Need to test N more (simple testing suggests we may need >200 in some cases!) [Vahid: I'm not sure why only N=201 is a good choice.]
 	// TODO: Need to decide what to do with end effect. Possibly /E=2 (set edges to 0) and then turn those zeros to NaNs? 
-	// TODO: Or maybe /E=3 is safest (repeat edges). The default /E=0 (bounce) is awful.
+	// TODO: Or maybe /E=1 is safest, this was tested with random noise around 0 and around a finite value
 	numpntsx=dimsize(w,0)
 	return numpntsx
 end
@@ -2159,7 +2083,7 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 	// Send command and read values
 	//print "sending command and reading"
 	scfd_SendCommandAndRead(S, AWG, rowNum, skip_raw2calc=skip_raw2calc) 
-	S.end_time = datetime  
+	S.end_time = datetime  // this did not work on a MAC but I am not going to change it until I confirm it also does not work on a PC
 	
 	// Process 1D read and distribute
 	if (!skip_data_distribution)
@@ -2880,6 +2804,7 @@ end
 function/T sce_ScanVarsToJson(S, traceback, [save_to_file])
 	// Can be used to save Function calls to a text file
 	Struct ScanVars &S
+	
 	string traceback
 	variable save_to_file  // Whether to save to .txt file
 	
@@ -2905,7 +2830,7 @@ function/T sce_ScanVarsToJson(S, traceback, [save_to_file])
 	buffer = addJSONkeyval(buffer,"rampratey",num2str(S.rampratey))
 	buffer = addJSONkeyval(buffer,"delayy",num2str(S.delayy))
 	
-	buffer = addJSONkeyval(buffer,"duration",num2str(S.duration))
+	buffer = addJSONkeyval(buffer,"duration_per_1D_scan",num2str(S.duration))
 	buffer = addJSONkeyval(buffer,"alternate",num2istr(S.alternate))	
 	buffer = addJSONkeyval(buffer,"readVsTime",num2str(S.readVsTime))
 	buffer = addJSONkeyval(buffer,"interlaced_y_flag",num2str(S.interlaced_y_flag))
@@ -2932,6 +2857,8 @@ function/T sce_ScanVarsToJson(S, traceback, [save_to_file])
 	
 	
 	buffer = prettyJSONfmt(buffer)
+	
+
 	
 	if (save_to_file)
 		// open function call history file (or create it)
