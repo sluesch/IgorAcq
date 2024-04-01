@@ -66,9 +66,9 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 	// create waves for DAC part
 	make/o/t/n=(numDACCh) fdacval0 = "0"				// Channel
 	make/o/t/n=(numDACCh) fdacval1 = "0"				// Output /mV
-	make/o/t/n=(numDACCh) fdacval2 = "-10000,10000"	// Limits /mV
+	make/o/t/n=(numDACCh) fdacval2 = "-1000,1000"	// Limits /mV
 	make/o/t/n=(numDACCh) fdacval3 = ""					// Labels
-	make/o/t/n=(numDACCh) fdacval4 = "10000"			// Ramprate limit /mV/s
+	make/o/t/n=(numDACCh) fdacval4 = "1000"			// Ramprate limit /mV/s
 	variable i=0
 	for(i=0;i<numDACCh;i+=1)
 		fdacval0[i] = num2istr(i)
@@ -96,12 +96,16 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 		fadcval3[i] = "wave"+num2istr(i)
 		fadcval4[i] = "ADC"+num2istr(i)
 	endfor
-	concatenate/o {fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7,fadcval8}, fadcvalstr // added 5 & 6 for resample and notch filter
+	//concatenate/o {fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7,fadcval8}, fadcvalstr // added 5 & 6 for resample and notch filter
+		concatenate/o {fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7}, fadcvalstr // removed 8 since resampling is now done by default
+
 	make/o/n=(numADCCh) fadcattr0 = 0
 	make/o/n=(numADCCh) fadcattr1 = 2
 	make/o/n=(numADCCh) fadcattr2 = 32
-	concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr // added fadcattr2 twice for two checkbox commands?
-	
+	//concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr // added fadcattr2 twice for two checkbox commands?
+		concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr /// removed 8 since resampling is now done by default
+
+
 	
 	// create waves for LI
 	make/o/t/n=(4,2) LIvalstr
