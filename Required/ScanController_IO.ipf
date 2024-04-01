@@ -115,6 +115,7 @@ function addMetaFiles(hdf5_id_list, [S, logs_only, comments])
 	
 	if (!logs_only)
 		make /FREE /T /N=1 sweep_logs = prettyJSONfmt(sc_createSweepLogs(S=S))
+		make /free /T /N=1 instr_logs=sc_instrumentLogs()  // Modifies the jstr to add Instrumt Status (from ScanController Window)
 		make /FREE /T /N=1 scan_vars_json = sce_ScanVarsToJson(S, getrtstackinfo(3), save_to_file = 0)
 	else
 		make /FREE /T /N=1 sweep_logs = prettyJSONfmt(sc_createSweepLogs(comments = comments))
@@ -145,6 +146,13 @@ function addMetaFiles(hdf5_id_list, [S, logs_only, comments])
 		if (V_flag != 0)
 				Print "HDF5SaveData Failed: ", "sweep_logs"
 		endif
+		
+		HDF5SaveData/z /A="instr_logs" instr_logs, hdf5_id, "metadata"
+		if (V_flag != 0)
+				Print "HDF5SaveData Failed: ", "instr_logs"
+		endif
+
+
 
 		if (!logs_only)
 			HDF5SaveData/z /A="ScanVars" scan_vars_json, hdf5_id, "metadata"
@@ -220,17 +228,17 @@ function /s sc_createSweepLogs([S, comments])  // TODO: Rename
    	     endif
     endif
 
-    sc_instrumentLogs(jstr)  // Modifies the jstr to add Instrumt Status (from ScanController Window)
+//    sc_instrumentLogs(jstr)  // Modifies the jstr to add Instrumt Status (from ScanController Window)
 	return jstr
 end
 
 
-function sc_instrumentLogs(jstr)
+function/s sc_instrumentLogs()
 	// Runs all getinstrStatus() functions, and adds results to json string (to be stored in sweeplogs)
 	// Note: all log strings must be valid JSON objects 
-    string &jstr
+    string jstr
     
-	sc_openInstrConnections(0)  // Reopen connections before asking for status in case it has been a long time (?)[Vahid: how long would be a long time??] since the beginning of the scan
+	//sc_openInstrConnections(0)  // Reopen connections before asking for status in case it has been a long time (?)[Vahid: how long would be a long time??] since the beginning of the scan
 	wave /t sc_Instr
 	variable i=0, j=0, addQuotes=0
 	string command="", val=""
@@ -244,29 +252,30 @@ function sc_instrumentLogs(jstr)
 				print "[ERROR] in sc_createSweepLogs: "+GetErrMessage(V_Flag,2)
 			endif
 			if(strlen(sc_log_buffer)!=0)
-				// need to get first key and value from sc_log_buffer
-				JSONSimple sc_log_buffer
-				wave/t t_tokentext
-				wave w_tokentype, w_tokensize, w_tokenparent
-	print t_tokentext
-				for(j=1;j<numpnts(t_tokentext)-1;j+=1)
-					if ( w_tokentype[j]==3 && w_tokensize[j]>0 )
-						if( w_tokenparent[j]==0 )
-							if( w_tokentype[j+1]==3 )
-								val = "\"" + t_tokentext[j+1] + "\""
-							else
-								val = t_tokentext[j+1]
-							endif
-							jstr = addJSONkeyval(jstr, t_tokentext[j], val)
-							break
-						endif
-					endif
-				endfor
+			jstr=sc_log_buffer
+//				// need to get first key and value from sc_log_buffer
+//				JSONSimple sc_log_buffer
+//				wave/t t_tokentext
+//				wave w_tokentype, w_tokensize, w_tokenparent
+//				for(j=1;j<numpnts(t_tokentext)-1;j+=1)
+//					if ( w_tokentype[j]==3 && w_tokensize[j]>0 )
+//						if( w_tokenparent[j]==0 )
+//							if( w_tokentype[j+1]==3 )
+//								val = "\"" + t_tokentext[j+1] + "\""
+//							else
+//								val = t_tokentext[j+1]
+//							endif
+//							jstr = addJSONkeyval(jstr, t_tokentext[j], val)
+//							break
+//						endif
+//					endif
+//				endfor
 			else
 				print "[WARNING] command failed to log anything: "+command+"\r"
 			endif
 		endif
 	endfor
+	return jstr
 end
 
 
@@ -1815,6 +1824,82 @@ function/s addJSONkeyval(JSONstr,key,value,[addquotes])
 
 end
 
+//function /S escapeQuotes(str)
+//	string str
+//
+//	variable i=0, escaped=0
+//	string output = ""
+//	do
+//
+//		if(i>strlen(str)-1)
+//			break
+//		endif
+//
+//		// check if the current character is escaped
+//		if(i!=0)
+//			if( CmpStr(str[i-1], "\\") == 0)
+//				escaped = 1
+//			else
+//				escaped = 0
+//			endif
+//		endif
+//
+//		// escape quotes
+//		if( CmpStr(str[i], "\"" ) == 0 && escaped == 0)
+//			// this is an unescaped quote
+//			str = str[0,i-1] + "\\" + str[i,inf]
+//		endif
+//		i+=1
+//
+//	while(1)
+//	return str
+//end
+
+
+//Function/S addJSONkeyval(JSONstr, key, value, [addquotes])
+//    String JSONstr, key, value
+//    Variable addquotes
+//    
+//    // Check if key is null
+//    if(strlen(key) == 0)
+//        printf "Error: Key is null or empty.\n"
+//        return JSONstr  // Optionally, return the unmodified JSON string or handle the error differently
+//    endif
+//
+//	// Escape quotes in key since it's always treated as a string
+//	key = escapeQuotes(key)
+//
+//	// Check if the value is to be added as a string
+//	if(!ParamIsDefault(addquotes) && addquotes == 1)
+//		// Escape quotes in value and wrap value in outer quotes
+//		value = "\"" + escapeQuotes(value) + "\""
+//	ElseIf(strlen(value) == 0)  // If value is an empty string, treat it as null
+//		value = "null"
+//		// No else case needed here; if addquotes is 0 or not provided, value is treated as numeric or boolean
+//
+//		if(strlen(JSONstr) != 0)
+//			// Existing JSON object; prepare to append
+//			// Trim leading '{' and trailing '}' to prepare for appending
+//			JSONstr = ReplaceString("{", JSONstr, "")
+//			JSONstr = ReplaceString("}", JSONstr, "")
+//			JSONstr = TrimString(JSONstr) // Trim both leading and trailing whitespace
+//
+//			// Append new key-value pair
+//			return "{" + JSONstr + ", \"" + key + "\":" + value + "}"
+//		else
+//			// New JSON object
+//			return "{\"" + key + "\":" + value + "}"
+//		endif
+//		endif
+//End
+//
+Function/S escapeQuotes(str)
+    // Helper function to escape quotes within a string
+    String str
+    return ReplaceString("\"", str, "\\\"")
+End
+
+
 function/s getIndent(level)
 	// returning whitespace for formatting strings
 	// level = # of tabs, 1 tab = 4 spaces
@@ -1975,37 +2060,6 @@ function countQuotes(str)
 
 	endfor
 	return quoteCount
-end
-
-function /S escapeQuotes(str)
-	string str
-
-	variable i=0, escaped=0
-	string output = ""
-	do
-
-		if(i>strlen(str)-1)
-			break
-		endif
-
-		// check if the current character is escaped
-		if(i!=0)
-			if( CmpStr(str[i-1], "\\") == 0)
-				escaped = 1
-			else
-				escaped = 0
-			endif
-		endif
-
-		// escape quotes
-		if( CmpStr(str[i], "\"" ) == 0 && escaped == 0)
-			// this is an unescaped quote
-			str = str[0,i-1] + "\\" + str[i,inf]
-		endif
-		i+=1
-
-	while(1)
-	return str
 end
 
 function /S unescapeQuotes(str)

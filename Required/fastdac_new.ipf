@@ -575,8 +575,7 @@ svar fd
 	
 		
 	buffer = addJSONkeyval(buffer, "http_address",fd, addquotes=1)
-	buffer = addJSONkeyval(buffer, "FDs_used (ADC list)",FDID_list , addquotes=0)
-
+	buffer = addJSONkeyval(buffer, "FDs_used (ADC list)",FDID_list , addquotes=1)
 	buffer = addJSONkeyval(buffer, "SamplingFreq", num2str(S.samplingFreq), addquotes=0)
 	buffer = addJSONkeyval(buffer, "MeasureFreq", num2str(S.measureFreq), addquotes=0)
 
@@ -587,13 +586,13 @@ svar fd
 	numDACCh=scfw_update_fdac("updatefdac")
 	for(i=0;i<numDACCh;i+=1)
 		sprintf key, "DAC%d{%s}",i, fdacvalstr[i][3]
-		buffer = addJSONkeyval(buffer, key, fdacvalstr[i][1]) // getfdacOutput is PER instrument
+		buffer = addJSONkeyval(buffer, key, fdacvalstr[i][1],addquotes=0) // getfdacOutput is PER instrument
 	endfor
 	
 // update ADC values
 	numADCCh=scfw_update_fadc("")
 	for(i=0;i<numADCCh;i+=1)
-		buffer = addJSONkeyval(buffer, "ADC"+num2str(i), fadcvalstr[i][1]) // getfdacOutput is PER instrument
+		buffer = addJSONkeyval(buffer, "ADC"+num2str(i), fadcvalstr[i][1],addquotes=0) // getfdacOutput is PER instrument
 	endfor	 
 
 //	
