@@ -1933,6 +1933,7 @@ function scfd_resampleWaves(w, measureFreq, targetFreq)
 	// to targetFreq (which should be lower than measureFreq)
 	Wave w
 	variable measureFreq, targetFreq
+	variable numpntsx
 	duplicate/o w w_before
 
 
@@ -1949,6 +1950,8 @@ function scfd_resampleWaves(w, measureFreq, targetFreq)
 	// TODO: Need to test N more (simple testing suggests we may need >200 in some cases!) [Vahid: I'm not sure why only N=201 is a good choice.]
 	// TODO: Need to decide what to do with end effect. Possibly /E=2 (set edges to 0) and then turn those zeros to NaNs? 
 	// TODO: Or maybe /E=3 is safest (repeat edges). The default /E=0 (bounce) is awful.
+	numpntsx=dimsize(w,0)
+	return numpntsx
 end
 
 
@@ -2333,121 +2336,133 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 	string rwn, cwn, calc_string, calc_str 
 	wave fadcattr
 	wave /T fadcvalstr
-	
+	int resamp
+	string wn
+	variable numpntsx
+
 	if (itemsinList(RawWaveNames1D) != itemsinList(CalCWaveNames1D))
 		abort "Different number of raw wave names compared to calc wave names"
 	endif
-	
+
 	for (i=0; i<itemsinlist(RawWaveNames1D); i++)
+		resamp=1 //assume we need to resample in the end
 
-			rwn = StringFromList(i, RawWaveNames1D)
-			cwn = StringFromList(i, CalcWaveNames1D)		
-			calc_string = StringFromList(i, CalcStrings)
-			
-			duplicate/o $rwn sc_tempwave
-			
-			string ADCnum = rwn[3,INF]
-						
-			if (fadcattr[str2num(ADCnum)][5] == 48) // checks which notch box is checked
-				scfd_notch_filters(sc_tempwave, ScanVars.measureFreq,Hzs=sc_nfreq, Qs=sc_nQs)
+		rwn = StringFromList(i, RawWaveNames1D)
+		cwn = StringFromList(i, CalcWaveNames1D)
+		calc_string = StringFromList(i, CalcStrings)
+
+		duplicate/o $rwn sc_tempwave
+
+		string ADCnum = rwn[3,INF]
+
+		if (fadcattr[str2num(ADCnum)][5] == 48) // checks which notch box is checked
+			scfd_notch_filters(sc_tempwave, ScanVars.measureFreq,Hzs=sc_nfreq, Qs=sc_nQs)
+		endif
+
+		if(sc_hotcold == 1)
+			scfd_sqw_analysis(sc_tempwave, sc_hotcolddelay, AWGVars.waveLen, cwn)
+			resamp=0
+		endif
+
+
+		if (fadcattr[str2num(ADCnum)][6] == 48) // checks which demod box is checked
+			scfd_demodulate(sc_tempwave, str2num(fadcvalstr[str2num(ADCnum)][7]), AWGVars.numCycles, AWGVars.waveLen, cwn)
+
+
+			//calc function for demod x
+			calc_str = ReplaceString(rwn, calc_string, cwn + "x")
+			execute(cwn+"x ="+calc_str)
+
+			//calc function for demod y
+			calc_str = ReplaceString(rwn, calc_string, cwn + "y")
+			execute(cwn+"y ="+calc_str)
+			resamp=0
+		endif
+
+		// dont resample for SQW analysis or demodulation after notch filtering resample
+		if (resamp==1)
+			numpntsx=scfd_resampleWaves(sc_tempwave, ScanVars.measureFreq, sc_ResampleFreqfadc)
+			if (rowNum==0)
+			wn=cwn+"_2d"
+			sci_init2DWave(wn,numpntsx, ScanVars.startx, ScanVars.finx, ScanVars.numptsy, ScanVars.starty, ScanVars.finy)
 			endif
-			
-			if(sc_hotcold == 1)
-				scfd_sqw_analysis(sc_tempwave, sc_hotcolddelay, AWGVars.waveLen, cwn)
-			endif
-			
-			
-			if (fadcattr[str2num(ADCnum)][6] == 48) // checks which demod box is checked
-				scfd_demodulate(sc_tempwave, str2num(fadcvalstr[str2num(ADCnum)][7]), AWGVars.numCycles, AWGVars.waveLen, cwn)
-				
-				
-				//calc function for demod x
-				calc_str = ReplaceString(rwn, calc_string, cwn + "x")
-				execute(cwn+"x ="+calc_str)
-			
-				//calc function for demod y
-				calc_str = ReplaceString(rwn, calc_string, cwn + "y")
-				execute(cwn+"y ="+calc_str)
-			endif
-				
-			if (fadcattr[str2num(ADCnum)][8] == 48) // checks which resample box is checked
-				scfd_resampleWaves(sc_tempwave, ScanVars.measureFreq, sc_ResampleFreqfadc)
+		endif
+
+
+		calc_str = ReplaceString(rwn, calc_string, "sc_tempwave")
+		execute("sc_tempwave ="+calc_str)
+
+		duplicate /o sc_tempwave $cwn
+
+		if (ScanVars.is2d)
+			// Copy 1D raw into 2D
+			wave raw1d = $rwn
+			wave raw2d = $rwn+"_2d"
+			raw2d[][rowNum] = raw1d[p]
+
+			// Copy 1D calc into 2D
+			string cwn2d = cwn+"_2d"
+			wave calc2d = $cwn2d
+			calc2d[][rowNum] = sc_tempwave[p]
+
+
+			//Copy 1D hotcold into 2d
+			if (sc_hotcold == 1)
+				string cwnhot = cwn + "hot"
+				string cwn2dhot = cwnhot + "_2d"
+				wave cw2dhot = $cwn2dhot
+				wave cwhot = $cwnhot
+				cw2dhot[][rowNum] = cwhot[p]
+
+				string cwncold = cwn + "cold"
+				string cwn2dcold = cwncold + "_2d"
+				wave cw2dcold = $cwn2dcold
+				wave cwcold = $cwncold
+				cw2dcold[][rowNum] = cwcold[p]
 			endif
 
-			calc_str = ReplaceString(rwn, calc_string, "sc_tempwave")
-			execute("sc_tempwave ="+calc_str)
-			
-			duplicate /o sc_tempwave $cwn
 
-			if (ScanVars.is2d)
-				// Copy 1D raw into 2D
-				wave raw1d = $rwn
-				wave raw2d = $rwn+"_2d"
-				raw2d[][rowNum] = raw1d[p]
-			
-				// Copy 1D calc into 2D
-				string cwn2d = cwn+"_2d"
-				wave calc2d = $cwn2d
-				calc2d[][rowNum] = sc_tempwave[p]	
-				
-				
-				//Copy 1D hotcold into 2d
-				if (sc_hotcold == 1)
-					string cwnhot = cwn + "hot"
-					string cwn2dhot = cwnhot + "_2d"
-					wave cw2dhot = $cwn2dhot
-					wave cwhot = $cwnhot
-					cw2dhot[][rowNum] = cwhot[p]
-					
-					string cwncold = cwn + "cold"
-					string cwn2dcold = cwncold + "_2d"
-					wave cw2dcold = $cwn2dcold
-					wave cwcold = $cwncold
-					cw2dcold[][rowNum] = cwcold[p]
+			// Copy 1D demod into 2D
+			if (fadcattr[str2num(ADCnum)][6] == 48)
+				string cwnx = cwn + "x"
+				string cwn2dx = cwnx + "_2d"
+				wave dmod2dx = $cwn2dx
+				wave dmodx = $cwnx
+				dmod2dx[][rowNum] = dmodx[p]
+
+				if (sc_demody == 1)
+					string cwny = cwn + "y"
+					string cwn2dy = cwny + "_2d"
+					wave dmod2dy = $cwn2dy
+					wave dmody = $cwny
+					dmod2dy[][rowNum] = dmody[p]
 				endif
-				
-				
-				// Copy 1D demod into 2D
-				if (fadcattr[str2num(ADCnum)][6] == 48)
-					string cwnx = cwn + "x"
-					string cwn2dx = cwnx + "_2d"
-					wave dmod2dx = $cwn2dx
-					wave dmodx = $cwnx
-					dmod2dx[][rowNum] = dmodx[p]
-					
-					if (sc_demody == 1)
-						string cwny = cwn + "y"
-						string cwn2dy = cwny + "_2d"
-						wave dmod2dy = $cwn2dy
-						wave dmody = $cwny
-						dmod2dy[][rowNum] = dmody[p]
-					endif
-					
-				endif
-							
+
 			endif
-			
-			// for powerspec //
-			variable avg_over = 5 //can specify the amount of rows that should be averaged over
-			
-			if (sc_plotRaw == 1)
-				if (rowNum < avg_over)
-					if(rowNum == 0)	
-						duplicate /O/R = [][0,rowNum] $(rwn) powerspec2D
-					elseif(waveExists($(rwn + "_2d")))
-						duplicate /O/R = [][0,rowNum] $(rwn + "_2d") powerspec2D
-					endif
-				else
-					duplicate /O/R = [][rowNum-avg_over,rowNum] $(rwn + "_2d") powerspec2D
+
+		endif
+
+		// for powerspec //
+		variable avg_over = 5 //can specify the amount of rows that should be averaged over
+
+		if (sc_plotRaw == 1)
+			if (rowNum < avg_over)
+				if(rowNum == 0)
+					duplicate /O/R = [][0,rowNum] $(rwn) powerspec2D
+				elseif(waveExists($(rwn + "_2d")))
+					duplicate /O/R = [][0,rowNum] $(rwn + "_2d") powerspec2D
 				endif
-				scfd_spectrum_analyzer(powerspec2D, ScanVars.measureFreq, "pwrspec" + ADCnum)
+			else
+				duplicate /O/R = [][rowNum-avg_over,rowNum] $(rwn + "_2d") powerspec2D
 			endif
-	endfor	
-	
+			scfd_spectrum_analyzer(powerspec2D, ScanVars.measureFreq, "pwrspec" + ADCnum)
+		endif
+	endfor
+
 	if (!ScanVars.prevent_2d_graph_updates)
 		doupdate // Update all the graphs with their new data
 	endif
-	
+
 end
 
 function scfd_resetraw_waves()
