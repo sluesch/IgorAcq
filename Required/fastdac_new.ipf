@@ -615,6 +615,19 @@ end
 //	print response
 //end
 
+function fd_stopFDACsweep()
+//svar fd
+//	// Stops any sweeps which might be running
+//	String cmd = "stop"
+//	String payload
+//	payload = "{\"dac\": " + num2str(channel) + ", \"setpoint_mv\": " + num2str(setpoint)+ ", \"rate_mv_s\": " + num2str(ramprate) + "}"
+//	String headers = "accept: application/json\nContent-Type: application/json"
+//	String response = postHTTP(fd, cmd, payload, headers)
+//	print response
+	print "stopped FD Ramp"
+
+end
+
 
 
 

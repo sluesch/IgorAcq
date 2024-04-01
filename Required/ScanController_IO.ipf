@@ -385,13 +385,13 @@ function SaveToHDF(S, [additional_wavenames])
 
 	// Save ScanWaves (e.g. x_array, y_array etc)
 	if(S.using_fastdac)
-		nvar sc_resampleFreqCheckFadc
-		saveScanWaves(calc_hdf5_id, S, sc_resampleFreqCheckFadc)  // Needs a different x_array size if filtered
-		if (Sc_saveRawFadc == 1)
-			saveScanWaves(raw_hdf5_id, S, 0)
-		endif
-	else
-		saveScanWaves(calc_hdf5_id, S, 0)
+		saveScanWaves(calc_hdf5_id, S, 1)  // Needs a different x_array size if filtered
+//		going forward we never save rawdata 
+//		if (Sc_saveRawFadc == 1)
+//			saveScanWaves(raw_hdf5_id, S, 0)
+//		endif
+//	else
+		//saveScanWaves(calc_hdf5_id, S, 0)
 	endif
 	
 	// Get waveList to save

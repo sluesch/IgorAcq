@@ -1836,44 +1836,44 @@ function scs_resumesweep(action) : Buttoncontrol
 end
 
 
-//function scs_checksweepstate()
-//	nvar /Z sc_abortsweep, sc_pause, sc_abortnosave
-//	
-//	if(NVAR_Exists(sc_abortsweep) && sc_abortsweep==1)
-//		// If the Abort button is pressed during the scan, save existing data and stop the scan.
-//		dowindow /k SweepControl
-//		sc_abortsweep=0
-//		sc_abortnosave=0
-//		sc_pause=0
-//		EndScan(save_experiment=0, aborting=1)				
-//		abort "Measurement aborted by user. Data saved automatically."
-//	elseif(NVAR_Exists(sc_abortnosave) && sc_abortnosave==1)
-//		// Abort measurement without saving anything!
-//		dowindow /k SweepControl
-//		sc_abortnosave = 0
-//		sc_abortsweep = 0
-//		sc_pause=0
-//		abort "Measurement aborted by user. Data not saved automatically. Run \"EndScan(abort=1)\" if needed"
-//	elseif(NVAR_Exists(sc_pause) && sc_pause==1)
-//		// Pause sweep if button is pressed
-//		do
-//			if(sc_abortsweep)
-//				dowindow /k SweepControl
-//				sc_abortsweep=0
-//				sc_abortnosave=0
-//				sc_pause=0
-//				EndScan(save_experiment=0, aborting=1) 				
-//				abort "Measurement aborted by user"
-//			elseif(sc_abortnosave)
-//				dowindow /k SweepControl
-//				sc_abortsweep=0
-//				sc_abortnosave=0
-//				sc_pause=0
-//				abort "Measurement aborted by user. Data NOT saved!"
-//			endif
-//		while(sc_pause)
-//	endif
-//end
+function scs_checksweepstate()
+	nvar /Z sc_abortsweep, sc_pause, sc_abortnosave
+	
+	if(NVAR_Exists(sc_abortsweep) && sc_abortsweep==1)
+		// If the Abort button is pressed during the scan, save existing data and stop the scan.
+		dowindow /k SweepControl
+		sc_abortsweep=0
+		sc_abortnosave=0
+		sc_pause=0
+		EndScan(save_experiment=0, aborting=1)				
+		abort "Measurement aborted by user. Data saved automatically."
+	elseif(NVAR_Exists(sc_abortnosave) && sc_abortnosave==1)
+		// Abort measurement without saving anything!
+		dowindow /k SweepControl
+		sc_abortnosave = 0
+		sc_abortsweep = 0
+		sc_pause=0
+		abort "Measurement aborted by user. Data not saved automatically. Run \"EndScan(abort=1)\" if needed"
+	elseif(NVAR_Exists(sc_pause) && sc_pause==1)
+		// Pause sweep if button is pressed
+		do
+			if(sc_abortsweep)
+				dowindow /k SweepControl
+				sc_abortsweep=0
+				sc_abortnosave=0
+				sc_pause=0
+				EndScan(save_experiment=0, aborting=1) 				
+				abort "Measurement aborted by user"
+			elseif(sc_abortnosave)
+				dowindow /k SweepControl
+				sc_abortsweep=0
+				sc_abortnosave=0
+				sc_pause=0
+				abort "Measurement aborted by user. Data NOT saved!"
+			endif
+		while(sc_pause)
+	endif
+end
 
 //////////////////////////////////////////////////////////////////////////////////////////
 //////////////////////////// Taking Data and processing //////////////////////////////////  scfd_... (ScanControllerFastdacData...)
@@ -1881,12 +1881,18 @@ end
 
 
 function scfd_postFilterNumpts(raw_numpts, measureFreq)  // TODO: Rename to NumptsAfterFilter
-    // Returns number of points that will exist after applying lowpass filter specified in ScanController_Fastdac
-   variable raw_numpts, measureFreq
+	// Returns number of points that will exist after applying lowpass filter specified in ScanController_Fastdac
+	variable raw_numpts, measureFreq
 	nvar targetFreq = sc_ResampleFreqFadc
-
+	variable ret_nofpnts
 	RatioFromNumber (targetFreq / measureFreq)
-	return round(raw_numpts*(V_numerator)/(V_denominator))  // TODO: Is this actually how many points are returned?
+	ret_nofpnts=raw_numpts
+	
+	if (V_numerator < V_denominator)
+		ret_nofpnts=round(raw_numpts*(V_numerator)/(V_denominator))  // TODO: Is this actually how many points are returned?
+	endif
+
+	return ret_nofpnts
 
 end
 
@@ -1923,14 +1929,19 @@ function scfd_resampleWaves(w, measureFreq, targetFreq)
 	// to targetFreq (which should be lower than measureFreq)
 	Wave w
 	variable measureFreq, targetFreq
+	duplicate/o w w_before
+
 
 	RatioFromNumber (targetFreq / measureFreq)
+	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=3 w
+
 //	print "Num and den are",v_numerator, v_denominator
 	if (V_numerator > V_denominator)
 		string cmd
-		printf cmd "WARNING[scfd_resampleWaves]: Resampling will increase number of datapoints, not decrease! (ratio = %d/%d)\r", V_numerator, V_denominator
+		print "Resampling would increase number of datapoints, not decrease, therefor resampling is skipped"
+		duplicate/o w_before w
+
 	endif
-	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=3 w
 	// TODO: Need to test N more (simple testing suggests we may need >200 in some cases!) [Vahid: I'm not sure why only N=201 is a good choice.]
 	// TODO: Need to decide what to do with end effect. Possibly /E=2 (set edges to 0) and then turn those zeros to NaNs? 
 	// TODO: Or maybe /E=3 is safest (repeat edges). The default /E=0 (bounce) is awful.
@@ -1988,8 +1999,6 @@ function scfd_notch_filters(wave wav, variable measureFreq, [string Hzs, string 
 	redimension/N=(num_rows, -1) temp_ifft
 	copyscales wav, temp_ifft
 	duplicate /o temp_ifft wav
-
-	
 end
 
 function scfd_sqw_analysis(wave wav, int delay, int wavelen, string wave_out)
@@ -2141,15 +2150,25 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 	endif
 	
 	// Send command and read values
-	print "sending command and reading"
+	//print "sending command and reading"
 	scfd_SendCommandAndRead(S, AWG, rowNum, skip_raw2calc=skip_raw2calc) 
 	S.end_time = datetime  
 	
 	// Process 1D read and distribute
 	if (!skip_data_distribution)
-	
-		//scfd_ProcessAndDistribute(S, AWG, rowNum) 
-		
+		scfd_ProcessAndDistribute(S, AWG, rowNum) 	
+	endif
+end
+
+function scfd_checkRawSave()
+	nvar sc_Saverawfadc
+	string notched_waves = scf_getRecordedFADCinfo("calc_names", column = 5)
+	string resamp_waves = scf_getRecordedFADCinfo("calc_names",column = 8)
+
+	if(cmpstr(notched_waves,"") || cmpstr(resamp_waves,""))
+		sc_Saverawfadc = 1
+	else
+		sc_Saverawfadc = 0
 	endif
 end
 
@@ -2185,16 +2204,16 @@ Function scfd_SendCommandAndRead(S,AWG_list,rowNum, [ skip_raw2calc])
     fd_start_sweep(S, AWG_list = AWG_list)
     S.lastread = -1  // Reset the last read index
     
-    // Prepare ADC waves for recording data
-   // Make/O/N=0 adc0, adc1, adc2, adc3
-    
+    //need to reinitialize the raw ADC waves otherwise loadfiles will be confused. If this is not a desired way to handle this,
+    //we will need to add a counter to loadfiles to keep track on how many pnts have already been read
+    scfd_resetraw_waves()
     // Loop to read data until the expected number of points is reached
     Do
-        print "running loadfiles"
+        //print "running loadfiles"
         done = loadfiles(S)  // Load data from files
-        //scfd_raw2CalcQuickDistribute()
-    	//scfd_checkSweepstate(fdID)
-        Asleep(0.1)  // Short pause to allow for data acquisition
+        scfd_raw2CalcQuickDistribute(0)  // 0 or 1 for if data should be displayed decimated or not during the scan
+    	scfd_checkSweepstate()
+        // Short pause to allow for data acquisition
     While (!done)  // Continue if not all points are read
     
     // Update FastDAC and ADC GUI elements
@@ -2272,7 +2291,7 @@ function loadfiles(S)
 					totpts = (v_npnts+v_numnans)
 					wavestats /q data2add
 					addpts=v_npnts
-					print "filling points from",initpts,"to",(initpts+addpts-1)
+					//print "filling points from",initpts,"to",(initpts+addpts-1)
 					// concatenate/NP=0 {data2add}, oneadc //concatenates data2add onto oneadc
 					oneadc[(initpts),(initpts+addpts-1)]=data2add[p-initpts]
 					if(totpts<=(initpts+addpts))
@@ -2281,14 +2300,14 @@ function loadfiles(S)
 					doupdate
 				endfor
 				lastfile=0 // we just read in a new file so perhaps the most recent file has not been read in
-				//DeleteFile /P=fdtest  /Z=1 currentfile
+				DeleteFile /P=fdtest  /Z=1 currentfile
 				break // break out of the i<numfiles for-loop since we just read in the next file.  We need to start from the top to look for the next-next file.
 			endif
 		endfor // if we got all the way through the i<numfiles for-loop without ever finding a filename that matches teststring (the next file) then we must have read the latest one
 	while(!lastfile)
 	numpnts_read=dimsize(oneadc,0)
-	print stopMSTimer(timer)
-	print numpnts_read
+	//print stopMSTimer(timer)
+	//print numpnts_read
 	return done
 end
 
@@ -2427,108 +2446,139 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 	
 end
 
-
-
-
-
-
-
-function scfd_raw2CalcQuickDistribute()
-    // Function to update graphs as data comes in temporarily, only applies the calc function for the scan 
-
-    variable i = 0
-    string RawWaveNames1D = sci_get1DWaveNames(1, 1)  // Get the names of 1D raw waves
-    string CalcWaveNames1D = sci_get1DWaveNames(0, 1)  // Get the names of 1D calc waves
-    string CalcStrings = scf_getRecordedFADCinfo("calc_funcs")  // Get the calc functions
-    string rwn, cwn, calc_string
-    wave fadcattr
-    wave /T fadcvalstr
-
-    if (itemsinList(RawWaveNames1D) != itemsinList(CalCWaveNames1D))
-        abort "Different number of raw wave names compared to calc wave names"
-    endif
-
-    for (i=0; i<itemsinlist(RawWaveNames1D); i++)
-        rwn = StringFromList(i, RawWaveNames1D)  // Get the current raw wave name
-        cwn = StringFromList(i, CalcWaveNames1D)  // Get the current calc wave name
-        calc_string = StringFromList(i, CalcStrings)  // Get the current calc function
-        duplicate/o $rwn sc_tempwave  // Duplicate the raw wave to a temporary wave
-
-        string ADCnum = rwn[3,INF]  // Extract the ADC number from the raw wave name
-
-        //calc_string = ReplaceString(rwn, calc_string, "sc_tempwave")  // Replace the raw wave name with the temporary wave name in the calc function
-        calc_string = ReplaceString(rwn, calc_string, "sc_tempwave")  // Replace the raw wave name with the temporary wave name in the calc function
-        execute("sc_tempwave = "+calc_string)  // Execute the calc function
-
-        //duplicate /o sc_tempwave $cwn  // Duplicate the temporary wave to the calc wave
-        FDecimateXPosStd(sc_tempwave,cwn,30,2,1)
-    endfor
+function scfd_resetraw_waves()
+	string RawWaveNames1D = sci_get1DWaveNames(1, 1)  // Get the names of 1D raw waves
+	string rwn
+	variable i
+	for (i=0; i<itemsinlist(RawWaveNames1D); i++)
+		rwn = StringFromList(i, RawWaveNames1D)  // Get the current raw wave name
+		wave temp=$rwn
+		temp=nan
+	endfor
 end
 
-function scfd_checkSweepstate(instrID)
+
+
+
+
+
+
+function scfd_raw2CalcQuickDistribute(int decim)
+	// Function to update graphs as data comes in temporarily, only applies the calc function for the scan
+	//decimate is 0 or 1 for if data should be displayed decimated or not during the scan
+
+	variable i = 0
+	string RawWaveNames1D = sci_get1DWaveNames(1, 1)  // Get the names of 1D raw waves
+	string CalcWaveNames1D = sci_get1DWaveNames(0, 1)  // Get the names of 1D calc waves
+	string CalcStrings = scf_getRecordedFADCinfo("calc_funcs")  // Get the calc functions
+	string rwn, cwn, calc_string
+	wave fadcattr
+	wave /T fadcvalstr
+
+	if (itemsinList(RawWaveNames1D) != itemsinList(CalCWaveNames1D))
+		abort "Different number of raw wave names compared to calc wave names"
+	endif
+
+	for (i=0; i<itemsinlist(RawWaveNames1D); i++)
+		rwn = StringFromList(i, RawWaveNames1D)  // Get the current raw wave name
+		cwn = StringFromList(i, CalcWaveNames1D)  // Get the current calc wave name
+		calc_string = StringFromList(i, CalcStrings)  // Get the current calc function
+		duplicate/o $rwn sc_tempwave  // Duplicate the raw wave to a temporary wave
+
+		string ADCnum = rwn[3,INF]  // Extract the ADC number from the raw wave name
+
+		//calc_string = ReplaceString(rwn, calc_string, "sc_tempwave")  // Replace the raw wave name with the temporary wave name in the calc function
+		calc_string = ReplaceString(rwn, calc_string, "sc_tempwave")  // Replace the raw wave name with the temporary wave name in the calc function
+		execute("sc_tempwave = "+calc_string)  // Execute the calc function
+
+		if (decim==1)
+			FDecimateXPosStd(sc_tempwave,cwn,30,2,1)
+		elseif (decim!=1)
+			duplicate /o sc_tempwave $cwn  // Duplicate the temporary wave to the calc wave
+		endif
+
+	endfor
+end
+
+function scfd_checkSweepstate()
+Svar fd
   	// if abort button pressed then stops FDAC sweep then aborts
-  	variable instrID
 	variable errCode
 	nvar sc_abortsweep
 	nvar sc_pause
   	try
-    	//scs_checksweepstate()
+    	scs_checksweepstate()
   	catch
 		errCode = GetRTError(1)
-		//fd_stopFDACsweep(instrID)
-//		if(v_abortcode == -1)  // If user abort
-//				sc_abortsweep = 0
-//				sc_pause = 0
-//		endif
+		fd_stopFDACsweep()
+		if(v_abortcode == -1)  // If user abort
+				sc_abortsweep = 0
+				sc_pause = 0
+		endif
 		abortonvalue 1,10
 	endtry
 end
 
 
+// Update after checkbox clicked
+function scw_CheckboxClicked(ControlName, Value)
+	string ControlName
+	variable value
+	string indexstring
+	wave sc_RawRecord, sc_RawPlot, sc_CalcRecord, sc_CalcPlot, sc_measAsync
+	nvar sc_PrintRaw, sc_PrintCalc
+	nvar/z sc_Printfadc, sc_Saverawfadc, sc_demodx, sc_demody, sc_plotRaw, sc_hotcold // FastDAC specific
+	variable index
+	string expr
+	if (stringmatch(ControlName,"sc_RawRecordCheckBox*"))
+		expr="sc_RawRecordCheckBox([[:digit:]]+)"
+		SplitString/E=(expr) controlname, indexstring
+		index = str2num(indexstring)
+		sc_RawRecord[index] = value
+	elseif (stringmatch(ControlName,"sc_CalcRecordCheckBox*"))
+		expr="sc_CalcRecordCheckBox([[:digit:]]+)"
+		SplitString/E=(expr) controlname, indexstring
+		index = str2num(indexstring)
+		sc_CalcRecord[index] = value
+	elseif (stringmatch(ControlName,"sc_RawPlotCheckBox*"))
+		expr="sc_RawPlotCheckBox([[:digit:]]+)"
+		SplitString/E=(expr) controlname, indexstring
+		index = str2num(indexstring)
+		sc_RawPlot[index] = value		
+	elseif (stringmatch(ControlName,"sc_CalcPlotCheckBox*"))
+		expr="sc_CalcPlotCheckBox([[:digit:]]+)"
+		SplitString/E=(expr) controlname, indexstring
+		index = str2num(indexstring)
+		sc_CalcPlot[index] = value				
+	elseif (stringmatch(ControlName,"sc_AsyncCheckBox*"))
+		expr="sc_AsyncCheckBox([[:digit:]]+)"
+		SplitString/E=(expr) controlname, indexstring
+		index = str2num(indexstring)
+		sc_measAsync[index] = value
+	elseif(stringmatch(ControlName,"sc_PrintRawBox"))
+		sc_PrintRaw = value
+	elseif(stringmatch(ControlName,"sc_PrintCalcBox"))
+		sc_PrintCalc = value
+	elseif(stringmatch(ControlName,"sc_PrintfadcBox")) // FastDAC window
+		sc_Printfadc = value
+	elseif(stringmatch(ControlName,"sc_SavefadcBox")) // FastDAC window
+		sc_Saverawfadc = value
+	elseif(stringmatch(ControlName,"sc_plotRawBox")) // FastDAC window
+		sc_plotRaw = value
+	elseif(stringmatch(ControlName,"sc_demodyBox")) // FastDAC window
+		sc_demody = value
+	elseif(stringmatch(ControlName,"sc_hotcoldBox")) // FastDAC window
+		sc_hotcold = value
 
-
-
-
-
-
-
-
-	
-	////////////////////////////////////////////////////////////////////////////////////////////////////////////////
-	
-//	
-//	variable numADCCh = itemsinlist(adcList)
-//	string waveslist = ""
-//	if (!paramisDefault(named_waves) && strlen(named_waves) > 0)  // Use specified wavenames instead of default ADC#
-//		scu_assertSeparatorType(named_waves, ";")
-//		if (itemsInList(named_waves) != numADCch)
-//			abort "ERROR[scfd_distributeData2]: wrong number of named_waves for numADCch being recorded"
-//		endif
-//		waveslist = named_waves
-//	else
-//		for(i=0;i<numADCCh;i++)
-//			waveslist = addListItem(" ADC"+stringFromList(i, adcList), waveslist, ";", INF)
-//		endfor
-//	endif
-//
-//	variable j, k, dataPoint
-//	string wave1d, s1, s2
-//	// load data into raw wave
-//	for(i=0;i<numADCCh;i+=1)
-//		wave1d = stringFromList(i, waveslist)
-//		wave rawwave = $wave1d
-//		k = 0
-//		for(j=0;j<bytes;j+=numADCCh*2)
-//		// convert to floating point
-//			s1 = buffer[j + (i*2)]
-//			s2 = buffer[j + (i*2) + 1]
-//			datapoint = fd_Char2Num(s1, s2)
-//			rawwave[colNumStart+k] = dataPoint
-//			k += 1*direction
-//		endfor
-//	endfor
+	endif
 end
 
+
+
+
+
+
+	
 
 Function sc_controlwindows(ba) : ButtonControl
 	STRUCT WMButtonAction &ba
@@ -2719,52 +2769,51 @@ function EndScan([S, save_experiment, aborting, additional_wavenames])
 	variable aborting
 	string additional_wavenames // Any additional wavenames to be saved in the DatHDF (and copied in Igor)
 	
-//	scfd_checkRawSave()
-//	set_indep()
-//	save_experiment = paramisDefault(save_experiment) ? 1 : save_experiment
-//	additional_wavenames = SelectString(ParamIsDefault(additional_wavenames), additional_wavenames, "")
-//	
-//	if(!paramIsDefault(S))
-//		scv_setLastScanVars(S)  // I.e save the ScanVars including end_time and any other changed values in case saving fails (which it often does)
-//	endif
-//	
-//	Struct ScanVars S_ // Note: This will definitely exist for the rest of this function
-//	scv_getLastScanVars(S_)
-//
-//	if (aborting)
-//		S_.end_time = datetime
-//		S_.comments = "aborted, " + S_.comments
-//	endif
-//	if (S_.end_time == 0 || numtype(S_.end_time) != 0) // Should have already been set, but if not, this is likely a good guess and prevents a stupid number being saved
-//		S_.end_time = datetime
-//		S_.comments = "end_time guessed, "+S_.comments
-//	endif
-//	
-//	nvar filenum
-//	S_.filenum = filenum
-//
-//	dowindow/k SweepControl // kill scan control window
-//	printf "Time elapsed: %.2f s \r", (S_.end_time-S_.start_time)
-//	HDF5CloseFile/A 0 //Make sure any previously opened HDFs are closed (may be left open if Igor crashes)
-//	
-//	if(S_.using_fastdac == 0)
-//		KillDataFolder/z root:async // clean this up for next time
-//	endif
-//	SaveToHDF(S_, additional_wavenames=additional_wavenames)
-//
-//	nvar sc_save_time
-//	if(save_experiment==1 && (datetime-sc_save_time)>180.0)
-//		// save if save_exp=1 and if more than 3 minutes has elapsed since previous saveExp
-//		saveExp()
-//		sc_save_time = datetime
-//	endif
-//
+	scfd_checkRawSave()
+	save_experiment = paramisDefault(save_experiment) ? 1 : save_experiment
+	additional_wavenames = SelectString(ParamIsDefault(additional_wavenames), additional_wavenames, "")
+	
+	if(!paramIsDefault(S))
+		scv_setLastScanVars(S)  // I.e save the ScanVars including end_time and any other changed values in case saving fails (which it often does)
+	endif
+
+	Struct ScanVars S_ // Note: This will definitely exist for the rest of this function
+	scv_getLastScanVars(S_)
+
+	if (aborting)
+		S_.end_time = datetime
+		S_.comments = "aborted, " + S_.comments
+	endif
+	if (S_.end_time == 0 || numtype(S_.end_time) != 0) // Should have already been set, but if not, this is likely a good guess and prevents a stupid number being saved
+		S_.end_time = datetime
+		S_.comments = "end_time guessed, "+S_.comments
+	endif
+	
+	nvar filenum
+	S_.filenum = filenum
+
+	dowindow/k SweepControl // kill scan control window
+	printf "Time elapsed: %.2f s \r", (S_.end_time-S_.start_time)
+	HDF5CloseFile/A 0 //Make sure any previously opened HDFs are closed (may be left open if Igor crashes)
+	
+	if(S_.using_fastdac == 0)
+		KillDataFolder/z root:async // clean this up for next time
+	endif
+	SaveToHDF(S_, additional_wavenames=additional_wavenames)
+
+	nvar sc_save_time
+	if(save_experiment==1 && (datetime-sc_save_time)>180.0)
+		// save if save_exp=1 and if more than 3 minutes has elapsed since previous saveExp
+		saveExp()
+		sc_save_time = datetime
+	endif
+
 //	if(sc_checkBackup())  	// check if a path is defined to backup data
 //		 sc_copyNewFiles(S_.filenum, save_experiment=save_experiment)		// copy data to server mount point (nvar filenum gets incremented after HDF is opened)
 //	endif
-//
-//	// add info about scan to the scan history file in /config
-//	sce_ScanVarsToJson(S_, getrtstackinfo(3), save_to_file=1)
+
+	// add info about scan to the scan history file in /config
+	sce_ScanVarsToJson(S_, getrtstackinfo(3), save_to_file=1)
 end
 
 
