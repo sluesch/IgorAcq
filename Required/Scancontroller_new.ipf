@@ -2165,6 +2165,7 @@ Function scfd_SendCommandAndRead(S,AWG_list,rowNum, [ skip_raw2calc])
         done = loadfiles(S)  // Load data from files
         scfd_raw2CalcQuickDistribute(0)  // 0 or 1 for if data should be displayed decimated or not during the scan
     	scfd_checkSweepstate()
+    	doupdate
         // Short pause to allow for data acquisition
     While (!done)  // Continue if not all points are read
     
@@ -2327,7 +2328,7 @@ function scfd_ProcessAndDistribute(ScanVars, AWGVars, rowNum)
 		// dont resample for SQW analysis or demodulation after notch filtering resample
 		if (resamp==1)
 			numpntsx=scfd_resampleWaves(sc_tempwave, ScanVars.measureFreq, sc_ResampleFreqfadc)
-			if (rowNum==0)
+			if (rowNum==0 && (ScanVars.is2d))
 			wn=cwn+"_2d"
 			sci_init2DWave(wn,numpntsx, ScanVars.startx, ScanVars.finx, ScanVars.numptsy, ScanVars.starty, ScanVars.finy)
 			endif
