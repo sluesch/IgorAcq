@@ -181,7 +181,7 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 	sc_Instr[0][0] = "openMultipleFDACs(\"12441\", verbose=1)"
 	//sc_Instr[1][0] = "openLS370connection(\"ls\", \"http://lksh370-xld.qdev-b111.lab:49300/api/v1/\", \"bfbig\", verbose=1)"
 	//sc_Instr[2][0] = "openIPS120connection(\"ips1\",\"GPIB::25::INSTR\", 9.569, 9000, 182, verbose=0, hold = 1)"
-	sc_Instr[0][2] = "getFDstatus(\"fd1\")"
+	sc_Instr[0][2] = "getFDstatus()"
 	//sc_Instr[1][2] = "getls370Status(\"ls\")"
 	//sc_Instr[2][2] = "getipsstatus(ips1)"
 	//sc_Instr[3][2] = "getFDstatus(\"fd2\")"
@@ -2540,7 +2540,7 @@ End
 function scw_updatewindow(action) : ButtonControl
 	string action
 
-	//*scw_saveConfig(scw_createConfig())   // write a new config file
+	scw_saveConfig()   // write a new config file
 end
 
 
@@ -2558,141 +2558,40 @@ function/s scw_createConfig()
 	string sysinfo = igorinfo(3)
 	tmpstr = addJSONkeyval(tmpstr, "OS", StringByKey("OS", sysinfo), addQuotes = 1)
 	tmpstr = addJSONkeyval(tmpstr, "IGOR_VERSION", StringByKey("IGORFILEVERSION", sysinfo), addQuotes = 1)
-	
-	
 	configstr = addJSONkeyval(configstr, "system_info", tmpstr)
 
-	// log instrument info
-	configstr = addJSONkeyval(configstr, "instruments", textWave2StrArray(sc_Instr))  /// <<<<<<<< I think some thing with textwave2strarray is broken... seems like a lot of the logs are lost after this
-
-	// wave names
-	tmpstr = ""
-	tmpstr = addJSONkeyval(tmpstr, "raw", textWave2StrArray(sc_RawWaveNames))
-	tmpstr = addJSONkeyval(tmpstr, "calc", textWave2StrArray(sc_CalcWaveNames))
-	configstr = addJSONkeyval(configstr, "wave_names", tmpstr)
-
-	// record checkboxes
-	tmpstr = ""
-	tmpstr = addJSONkeyval(tmpstr, "raw", wave2BoolArray(sc_RawRecord))
-	tmpstr = addJSONkeyval(tmpstr, "calc", wave2BoolArray(sc_CalcRecord))
-	configstr = addJSONkeyval(configstr, "record_waves", tmpstr)
-
-	// record checkboxes
-	tmpstr = ""
-	tmpstr = addJSONkeyval(tmpstr, "raw", wave2BoolArray(sc_RawPlot))
-	tmpstr = addJSONkeyval(tmpstr, "calc", wave2BoolArray(sc_CalcPlot))
-	configstr = addJSONkeyval(configstr, "plot_waves", tmpstr)
-
-	// async checkboxes
-	configstr = addJSONkeyval(configstr, "meas_async", wave2BoolArray(sc_measAsync))
-
-	// scripts
-	tmpstr = ""
-	tmpstr = addJSONkeyval(tmpstr, "raw", textWave2StrArray(sc_RawScripts))
-	tmpstr = addJSONkeyval(tmpstr, "calc", textWave2StrArray(sc_CalcScripts))
-	configstr = addJSONkeyval(configstr, "scripts", tmpstr)
-
-	// print_to_history
-	tmpstr = ""
-	tmpstr = addJSONkeyval(tmpstr, "raw", num2bool(sc_PrintRaw))
-	tmpstr = addJSONkeyval(tmpstr, "calc", num2bool(sc_PrintCalc))
-	configstr = addJSONkeyval(configstr, "print_to_history", tmpstr)
-
-	// FastDac if it exists
-	WAVE/Z fadcvalstr
-	if( WaveExists(fadcvalstr) )
-		variable i = 0
-		wave fadcattr
-		make/o/free/n=(dimsize(fadcattr, 0)) tempwave
-		
-		string fdinfo = ""
-		duplicate/o/free/r=[][0] fadcvalstr tempstrwave
-		fdinfo = addJSONkeyval(fdinfo, "ADCnums", textwave2strarray(tempstrwave))
-
-		duplicate/o/free/r=[][1] fadcvalstr tempstrwave
-		fdinfo = addJSONkeyval(fdinfo, "ADCvals", textwave2strarray(tempstrwave))
-		
-		tempwave = fadcattr[p][2]
-		for (i=0;i<numpnts(tempwave);i++)
-			tempwave[i] =	tempwave[i] == 48 ? 1 : 0
-		endfor
-
-		fdinfo = addJSONkeyval(fdinfo, "record", wave2boolarray(tempwave))
-		
-		duplicate/o/free/r=[][3] fadcvalstr tempstrwave
-		fdinfo = addJSONkeyval(fdinfo, "calc_name", textwave2strarray(tempstrwave))
-		
-		duplicate/o/free/r=[][4] fadcvalstr tempstrwave
-		fdinfo = addJSONkeyval(fdinfo, "calc_script", textwave2strarray(tempstrwave))
-
-
-		configstr = addJSONkeyval(configstr, "FastDAC", fdinfo)
-	endif
-
-	configstr = addJSONkeyval(configstr, "filenum", num2istr(filenum))
-	
-	configstr = addJSONkeyval(configstr, "cleanup", num2istr(sc_cleanup))
-
+	// no longer logging instr info, as this is now logged in the config folder many many times
 	return configstr
 end
 
 
-function scw_saveConfig(configstr)
-	string configstr
-	svar sc_current_config
-
-	string filename = "sc" + num2istr(scu_unixTime()) + ".json"
-//	writetofile(prettyJSONfmt(configstr), filename, "config")
-	writetofile(configstr, filename, "config")
-	sc_current_config = filename
+function scw_saveConfig()
+	nvar lastconfig
+	wave sc_Instr, AWGattr,AWGattr0,AWGattr1,AWGsetattr,fadcattr,fdacattr,instrBoxAttr,LIattr,LIattr0,	AWGsetvalstr,AWGvalstr,AWGvalstr0,AWGvalstr1,fadcvalstr,fdacvalstr,LIvalstr,LIvalstr0,old_fdacvalstr 
+lastconfig=scu_unixTime()
+	string filename = "attr" + num2istr(lastconfig) + ".itx"
+	string filename1 = "valstr" + num2istr(lastconfig) + ".itx"
+	Save/T/M="\n"/p=config AWGattr,AWGattr0,AWGattr1,AWGsetattr,fadcattr,fdacattr,instrBoxAttr,LIattr,LIattr0 as filename
+	Save/T/M="\n"/P=config sc_Instr,AWGsetvalstr,AWGvalstr,AWGvalstr0,AWGvalstr1,fadcvalstr,fdacvalstr,LIvalstr,LIvalstr0,old_fdacvalstr as filename1
 end
 
 
-function scw_loadConfig(configfile)
-	string configfile
-	string jstr
-	nvar sc_PrintRaw, sc_PrintCalc
-	svar sc_current_config
-
-	// load JSON string from config file
-	printf "Loading configuration from: %s\n", configfile
-	sc_current_config = configfile
-	jstr = readtxtfile(configfile,"config")
-
-	// instruments
-	loadStrArray2textWave(getJSONvalue(jstr, "instruments"), "sc_Instr")
-
-	// waves
-	loadStrArray2textWave(getJSONvalue(jstr,"wave_names:raw"),"sc_RawWaveNames")
-	loadStrArray2textWave(getJSONvalue(jstr,"wave_names:calc"),"sc_CalcWaveNames")
-
-	// record checkboxes
-	loadBoolArray2wave(getJSONvalue(jstr,"record_waves:raw"),"sc_RawRecord")
-	loadBoolArray2wave(getJSONvalue(jstr,"record_waves:calc"),"sc_CalcRecord")
-
-	// plot checkboxes
-	loadBoolArray2wave(getJSONvalue(jstr,"plot_waves:raw"),"sc_RawPlot")
-	loadBoolArray2wave(getJSONvalue(jstr,"plot_waves:calc"),"sc_CalcPlot")
-
-	// async checkboxes
-	loadBoolArray2wave(getJSONvalue(jstr,"meas_async"),"sc_measAsync")
-
-	// print_to_history
-	loadBool2var(getJSONvalue(jstr,"print_to_history:raw"),"sc_PrintRaw")
-	loadBool2var(getJSONvalue(jstr,"print_to_history:calc"),"sc_PrintCalc")
-
-	// scripts
-	loadStrArray2textWave(getJSONvalue(jstr,"scripts:raw"),"sc_RawScripts")
-	loadStrArray2textWave(getJSONvalue(jstr,"scripts:calc"),"sc_CalcScripts")
-
-	//filenum
-	loadNum2var(getJSONvalue(jstr,"filenum"),"filenum")
+function scw_loadConfig()
+nvar lastconfig
+	wave sc_Instr, AWGattr,AWGattr0,AWGattr1,AWGsetattr,fadcattr,fdacattr,instrBoxAttr,LIattr,LIattr0,	AWGsetvalstr,AWGvalstr,AWGvalstr0,AWGvalstr1,fadcvalstr,fdacvalstr,LIvalstr,LIvalstr0,old_fdacvalstr 
+	killwaves sc_Instr AWGattr,AWGattr0,AWGattr1,AWGsetattr,fadcattr,fdacattr,instrBoxAttr,LIattr,LIattr0,	AWGsetvalstr,AWGvalstr,AWGvalstr0,AWGvalstr1,fadcvalstr,fdacvalstr,LIvalstr,LIvalstr0,old_fdacvalstr 
+	string filename = "attr" + num2istr(lastconfig) + ".itx"
+	string filename1 = "valstr" + num2istr(lastconfig) + ".itx"
 	
-	//cleanup
-	loadNum2var(getJSONvalue(jstr,"cleanup"),"sc_cleanup")
-
-	// reload ScanController window
-	//*scw_rebuildwindow()
+	print "first we had to delete all config waves: valstr, attvals, etc"
+	print "Now, load last config waves by manually dragging the following files into Igor"
+	print filename1
+	print filename
+	
+	print "then reinitialize FastDAC or scancontroller window under Menu/Panel_Macros/..."
+	
+	//execute("after1()")
+	
 end
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2875,4 +2774,22 @@ function/T sce_ScanVarsToJson(S, traceback, [save_to_file])
 		endif
 	endif
 	return buffer
+end
+
+
+
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+function ask_user(question, [type])
+    // Popup a confirmation window to user and return answer value
+	// type = 0,1,2 for (OK), (Yes/No), (Yes/No/Cancel) returns are V_flag = 1: Yes, 2: No, 3: Cancel
+	string question
+	variable type
+	type = paramisdefault(type) ? 1 : type
+	doalert type, question
+	return V_flag
 end

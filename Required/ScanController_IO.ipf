@@ -172,7 +172,7 @@ function addMetaFiles(hdf5_id_list, [S, logs_only, comments])
 		endif
 
 		// may as well save this config file, since we already have it
-		scw_saveConfig(cconfig[0])	
+		scw_saveConfig()	
 		
 	endfor
 end
