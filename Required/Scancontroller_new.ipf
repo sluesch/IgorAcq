@@ -1711,6 +1711,27 @@ threadsafe function sc_sleep_noupdate(delay)
 
 end
 
+
+function sc_checkBackup()
+	// the path `server` should point to /measurement-data
+	//     which has been mounted as a network drive on your measurement computer
+	// if it is, backups will be created in an appropriate directory
+	//      qdot-server.phas.ubc.ca/measurement-data/<hostname>/<username>/<exp>
+	svar sc_hostname
+
+	GetFileFolderInfo/Z/Q/P=server  // Check if data path is definded
+	if(v_flag != 0 || v_isfolder !=1)
+		print "WARNING[sc_checkBackup]: Only saving local copies of data. Set a server path with \"NewPath server\" (only to folder which contains \"local-measurement-data\")"
+		return 0
+	else
+		// this should also create the path if it does not exist
+		string sp = S_path
+		newpath /C/O/Q backup_data sp+sc_hostname+":"+getExpPath("data", full=1)
+		newpath /C/O/Q backup_config sp+sc_hostname+":"+getExpPath("config", full=1)
+		return 1
+	endif
+end
+
 ////////////////////////////
 ///// Sweep controls   ///// scs_... (ScanControlSweep...)
 ////////////////////////////
@@ -2692,9 +2713,9 @@ function SaveNamedWaves(wave_names, comments)
 	endfor
 	CloseHDFFile(num2str(hdfid))
 	
-	//*if(sc_checkBackup())  	// check if a path is defined to backup data
-		//sc_copyNewFiles(current_filenum, save_experiment=0)		// copy data to server mount point (nvar filenum gets incremented after HDF is opened)
-	//endif
+	if(sc_checkBackup())  	// check if a path is defined to backup data
+		sc_copyNewFiles(current_filenum, save_experiment=0)		// copy data to server mount point (nvar filenum gets incremented after HDF is opened)
+	endif
 		
 	filenum += 1 
 end
