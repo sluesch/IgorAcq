@@ -2856,3 +2856,410 @@ function ask_user(question, [type])
 	doalert type, question
 	return V_flag
 end
+
+////////////////////////////////////////////
+/// Slow ScanController Recording Data /////
+////////////////////////////////////////////
+function RecordValues(S, i, j, [fillnan])  
+	// In a 1d scan, i is the index of the loop. j will be ignored.
+	// In a 2d scan, i is the index of the outer (slow) loop, and j is the index of the inner (fast) loop.
+	// fillnan=1 skips any read or calculation functions entirely and fills point [i,j] with nan  (i.e. if intending to record only a subset of a larger array this effectively skips the places that should not be read)
+	Struct ScanVars &S
+	variable i, j, fillnan
+	variable ii = 0
+	
+	fillnan = paramisdefault(fillnan) ? 0 : fillnan
+
+	// Set Scan start_time on first measurement if not already set
+	if (i == 0 && j == 0 && (S.start_time == 0 || numtype(S.start_time) != 0))
+		S.start_time = datetime
+	endif
+
+	// Figure out which way to index waves
+	variable innerindex, outerindex
+	if (s.is2d == 1) //1 is normal 2D
+		// 2d
+		innerindex = j
+		outerindex = i
+	else
+		// 1d
+		innerindex = i
+	endif
+	
+	// readvstime works only in 1d and rescales (grows) the wave at each index
+	if(S.readVsTime == 1 && S.is2d)
+		abort "ERROR[RecordValues]: Not valid to readvstime in 2D"
+	endif
+
+	//// Setup and run async data collection ////
+	wave sc_measAsync
+	if( (sum(sc_measAsync) > 1) && (fillnan==0))
+		variable tgID = sc_ManageThreads(innerindex, outerindex, S.readvstime, S.is2d, S.start_time) // start threads, wait, collect data
+		sc_KillThreads(tgID) // Terminate threads
+	endif
+
+	//// Run sync data collection (or fill with NaNs) ////
+	wave sc_RawRecord, sc_CalcRecord
+	wave/t sc_RawWaveNames, sc_RawScripts, sc_CalcWaveNames, sc_CalcScripts
+	variable /g sc_tmpVal  // Used when evaluating measurement scripts from ScanController window
+	string script = "", cmd = ""
+	ii=0
+	do // TODO: Ideally rewrite this to use sci_get1DWaveNames() but need to be careful about only updating sc_measAsync == 0 ones here...
+		if (sc_RawRecord[ii] == 1 && sc_measAsync[ii]==0)
+			wave wref1d = $sc_RawWaveNames[ii]
+
+			// Redimension waves if readvstime is set to 1
+			if (S.readVsTime == 1)
+				redimension /n=(innerindex+1) wref1d
+				S.numptsx = innerindex+1  // So that x_array etc will be saved correctly later
+				wref1d[innerindex] = NaN  // Prevents graph updating with a zero
+				setscale/I x 0,  datetime - S.start_time, wref1d
+				S.finx = datetime - S.start_time 	// So that x_array etc will be saved correctly later
+				scv_setLastScanVars(S)
+			endif
+
+			if(!fillnan)
+				script = TrimString(sc_RawScripts[ii])
+				sprintf cmd, "%s = %s", "sc_tmpVal", script
+				Execute/Q/Z cmd
+				if(V_flag!=0)
+					print "[ERROR] \"RecordValues\": Using "+script+" raises an error: "+GetErrMessage(V_Flag,2)
+				endif
+			else
+				sc_tmpval = NaN
+			endif
+			wref1d[innerindex] = sc_tmpval
+
+			if (S.is2d == 1)
+				// 2D Wave
+				wave wref2d = $sc_RawWaveNames[ii] + "_2d"
+				wref2d[innerindex][outerindex] = wref1d[innerindex]
+			endif
+		endif
+		ii+=1
+	while (ii < numpnts(sc_RawWaveNames))
+
+
+	//// Calculate interpreted numbers and store them in calculated waves ////
+	ii=0
+	cmd = ""
+	do
+		if (sc_CalcRecord[ii] == 1)
+			wave wref1d = $sc_CalcWaveNames[ii] // this is the 1D wave I am filling
+
+			// Redimension waves if readvstimeis set to 1
+			if (S.readvstime == 1)
+				redimension /n=(innerindex+1) wref1d
+				setscale/I x 0, datetime - S.start_time, wref1d
+			endif
+
+			if(!fillnan)
+				script = TrimString(sc_CalcScripts[ii])
+				// Allow the use of the keyword '[i]' in calculated fields where i is the inner loop's current index
+				script = ReplaceString("[i]", script, "["+num2istr(innerindex)+"]")
+				sprintf cmd, "%s = %s", "sc_tmpVal", script
+				Execute/Q/Z cmd
+				if(V_flag!=0)
+					print "[ERROR] in RecordValues (calc): "+GetErrMessage(V_Flag,2)
+				endif
+			else
+				sc_tmpval = NaN
+			endif
+			wref1d[innerindex] = sc_tmpval
+
+			if (S.is2d == 1)
+				wave wref2d = $sc_CalcWaveNames[ii] + "_2d"
+				wref2d[innerindex][outerindex] = wref1d[innerindex]
+			endif
+		endif
+		ii+=1
+	while (ii < numpnts(sc_CalcWaveNames))
+
+	S.end_time = datetime // Updates each loop
+
+	// check abort/pause status
+	nvar sc_abortsweep, sc_pause, sc_scanstarttime
+	try
+		scs_checksweepstate()
+	catch
+		variable err = GetRTError(1)
+		// reset sweep control parameters if igor abort button is used
+		if(v_abortcode == -1)
+			sc_abortsweep = 0
+			sc_pause = 0
+		endif
+		
+		//silent abort (with code 10 which can be checked if caught elsewhere)
+		abortonvalue 1,10 
+	endtry
+
+	// If the end of a 1D sweep, then update all graphs, otherwise only update the raw 1D graphs
+	if (j == S.numptsx - 1)
+		doupdate
+	else
+		scg_updateFrequentGraphs()
+	endif
+end
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////// ASYNC handling ///////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Note: Slow ScanContoller ONLY
+
+function sc_ManageThreads(innerIndex, outerIndex, readvstime, is2d, start_time)
+	variable innerIndex, outerIndex, readvstime
+	variable is2d, start_time
+	svar sc_asyncFolders
+	nvar sc_numAvailThreads, sc_numInstrThreads
+	wave /WAVE sc_asyncRefs
+
+	variable tgID = ThreadGroupCreate(min(sc_numInstrThreads, sc_numAvailThreads)) // open threads
+
+	variable i=0, idx=0, measIndex=0, threadIndex = 0
+	string script, queryFunc, strID, threadFolder
+
+	// start new thread for each thread_* folder in data folder structure
+	for(i=0;i<sc_numInstrThreads;i+=1)
+
+		do
+			threadIndex = ThreadGroupWait(tgID, -2) // relying on this to keep track of index
+		while(threadIndex<1)
+
+		duplicatedatafolder root:async, root:asyncCopy //duplicate async folder
+		ThreadGroupPutDF tgID, root:asyncCopy // move root:asyncCopy to where threadGroup can access it
+											           // effectively kills root:asyncCopy in main thread
+
+		// start thread
+		threadstart tgID, threadIndex-1, sc_Worker(sc_asyncRefs, innerindex, outerindex, \
+																 StringFromList(i, sc_asyncFolders, ";"), is2d, \
+																 readvstime, start_time)
+	endfor
+
+	// wait for all threads to finish and get the rest of the data
+	do
+		threadIndex = ThreadGroupWait(tgID, 0)
+		sleep /s 0.001
+	while(threadIndex!=0)
+
+	return tgID
+end
+
+
+threadsafe function sc_Worker(refWave, innerindex, outerindex, folderIndex, is2d, rvt, starttime)
+	wave /WAVE refWave
+	variable innerindex, outerindex, is2d, rvt, starttime
+	string folderIndex
+
+	do
+		DFREF dfr = ThreadGroupGetDFR(0,0)	// Get free data folder from input queue
+		if (DataFolderRefStatus(dfr) == 0)
+			continue
+		else
+			break
+		endif
+	while(1)
+
+	setdatafolder dfr:$(folderIndex)
+
+	nvar /z instrID = instrID
+	svar /z queryFunc = queryFunc
+	svar /z wavIdx = wavIdx
+
+	if(nvar_exists(instrID) && svar_exists(queryFunc) && svar_exists(wavIdx))
+
+		variable i, val
+		for(i=0;i<ItemsInList(queryFunc, ";");i+=1)
+
+			// do the measurements
+			funcref sc_funcAsync func = $(StringFromList(i, queryFunc, ";"))
+			val = func(instrID)
+
+			if(numtype(val)==2)
+				// if NaN was returned, try the next function
+				continue
+			endif
+
+			wave wref1d = refWave[2*str2num(StringFromList(i, wavIdx, ";"))]
+
+			if(rvt == 1)
+				redimension /n=(innerindex+1) wref1d
+				setscale/I x 0, datetime - starttime, wref1d
+			endif
+
+			wref1d[innerindex] = val
+
+			if(is2d)
+				wave wref2d = refWave[2*str2num(StringFromList(i, wavIdx, ";"))+1]
+				wref2d[innerindex][outerindex] = val
+			endif
+
+		endfor
+
+		return i
+	else
+		// if no instrID/queryFunc/wavIdx exists, get out
+		return NaN
+	endif
+end
+
+
+threadsafe function sc_funcAsync(instrID)  // Reference functions for all *_async functions
+	variable instrID                    // instrID used as only input to async functions
+end
+
+
+function sc_KillThreads(tgID)
+	variable tgID
+	variable releaseResult
+
+	releaseResult = ThreadGroupRelease(tgID)
+	if (releaseResult == -2)
+		abort "ThreadGroupRelease failed, threads were force quit. Igor should be restarted!"
+	elseif(releaseResult == -1)
+		printf "ThreadGroupRelease failed. No fatal errors, will continue.\r"
+	endif
+
+end
+
+
+function sc_checkAsyncScript(str)
+	// returns -1 if formatting is bad
+	// could be better
+	// returns position of first ( character if it is good
+	string str
+
+	variable i = 0, firstOP = 0, countOP = 0, countCP = 0
+	for(i=0; i<strlen(str); i+=1)
+
+		if( CmpStr(str[i], "(") == 0 )
+			countOP+=1 // count opening parentheses
+			if( firstOP==0 )
+				firstOP = i // record position of first (
+				continue
+			endif
+		endif
+
+		if( CmpStr(str[i], ")") == 0 )
+			countCP -=1 // count closing parentheses
+			continue
+		endif
+
+		if( CmpStr(str[i], ",") == 0 )
+			return -1 // stop on comma
+		endif
+
+	endfor
+
+	if( (countOP==1) && (countCP==-1) )
+		return firstOP
+	else
+		return -1
+	endif
+end
+
+
+function sc_findAsyncMeasurements()
+	// go through RawScripts and look for valid async measurements
+	//    wherever the meas_async box is checked in the window
+	nvar sc_is2d
+	wave /t sc_RawScripts, sc_RawWaveNames
+	wave sc_RawRecord, sc_measAsync
+
+	// setup async folder
+	killdatafolder /z root:async // kill it if it exists
+	newdatafolder root:async // create an empty version
+
+	variable i = 0, idx = 0, measIdx=0, instrAsync=0
+	string script, strID, queryFunc, threadFolder
+	string /g sc_asyncFolders = ""
+	make /o/n=1 /WAVE sc_asyncRefs
+
+
+	for(i=0;i<numpnts(sc_RawScripts);i+=1)
+
+		if (sc_RawRecord[i] == 1)
+			// this is something that will be measured
+
+			if (sc_measAsync[i] == 1) // this is something that should be async
+
+				script = sc_RawScripts[i]
+				idx = sc_checkAsyncScript(script) // check function format
+
+				if(idx!=-1) // fucntion is good, this will be recorded asynchronously
+
+					// keep track of function names and instrIDs in folder structure
+					strID = script[idx+1,strlen(script)-2]
+					queryFunc = script[0,idx-1]
+
+					// creates root:async:instr1
+					sprintf threadFolder, "thread_%s", strID
+					if(DataFolderExists("root:async:"+threadFolder))
+						// add measurements to the thread directory for this instrument
+
+						svar qF = root:async:$(threadFolder):queryFunc
+						qF += ";"+queryFunc
+						svar wI = root:async:$(threadFolder):wavIdx
+						wI += ";" + num2str(measIdx)
+					else
+						instrAsync += 1
+
+						// create a new thread directory for this instrument
+						newdatafolder root:async:$(threadFolder)
+						nvar instrID = $strID
+						variable /g root:async:$(threadFolder):instrID = instrID   // creates variable instrID in root:thread
+																	                          // that has the same value as $strID
+						string /g root:async:$(threadFolder):wavIdx = num2str(measIdx)
+						string /g root:async:$(threadFolder):queryFunc = queryFunc // creates string variable queryFunc in root:async:thread
+																                             // that has a value queryFunc="readInstr"
+						sc_asyncFolders += threadFolder + ";"
+
+
+
+					endif
+
+					// fill wave reference(s)
+					redimension /n=(2*measIdx+2) sc_asyncRefs
+					wave w=$sc_rawWaveNames[i] // 1d wave
+					sc_asyncRefs[2*measIdx] = w
+					if(sc_is2d)
+						wave w2d=$(sc_rawWaveNames[i]+"2d") // 2d wave
+						sc_asyncRefs[2*measIdx+1] = w2d
+					endif
+					measIdx+=1
+
+				else
+					// measurement script is formatted wrong
+					sc_measAsync[i]=0
+					printf "[WARNING] Async scripts must be formatted: \"readFunc(instrID)\"\r\t%s is no good and will be read synchronously,\r", sc_RawScripts[i]
+				endif
+
+			endif
+		endif
+
+	endfor
+
+	if(instrAsync<2)
+		// no point in doing anyting async is only one instrument is capable of it
+		// will uncheck boxes automatically
+		make /o/n=(numpnts(sc_RawScripts)) sc_measAsync = 0
+	endif
+
+	// change state of check boxes based on what just happened here!
+	doupdate /W=ScanController
+	string cmd = ""
+	for(i=0;i<numpnts(sc_measAsync);i+=1)
+		sprintf cmd, "CheckBox sc_AsyncCheckBox%d,win=ScanController,value=%d", i, sc_measAsync[i]
+		execute(cmd)
+	endfor
+	doupdate /W=ScanController
+
+	if(sum(sc_measAsync)==0)
+		sc_asyncFolders = ""
+		KillDataFolder /Z root:async // don't need this
+		return 0
+	else
+		variable /g sc_numInstrThreads = ItemsInList(sc_asyncFolders, ";")
+		variable /g sc_numAvailThreads = threadProcessorCount
+		return sc_numInstrThreads
+	endif
+
+end
