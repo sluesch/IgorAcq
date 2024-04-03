@@ -630,47 +630,88 @@ function initScanVars(S, [instrIDx, startx, finx, channelsx, numptsx, delayx, ra
 	S.filenum = 0
 end
 
-function/S scf_getRecordedFADCinfo(info_name, [column])  
+function get_dacListIDs(S)
+
+	struct ScanVars &S
+	string  new_channels
+	
+	// working out DACLIstIDs for x channels
+	new_channels=scu_getChannelNumbers(S.channelsx) /// this returns a string with x DAC channels
+	wave numericwave
+	wave/t dac_channel
+	variable i
+	S.daclistids=S.channelsx
+	StringToListWave(S.daclistids)
+	string returnlist=""
+
+	for (i = 0; i<dimsize(numericwave, 0); i=i+1)
+		returnlist=returnlist+dac_channel[numericwave[i]]+","
+	endfor
+	S.dacListIDs=returnlist;
+	
+	// working out DACLIstIDs for y channels
+	new_channels=scu_getChannelNumbers(S.channelsy) /// this returns a string with x DAC channels
+	S.dacListIDs_y=S.channelsy
+	StringToListWave(S.dacListIDs_y)
+	 returnlist=""
+	 if((S.is2d==1)&& (strlen(S.dacListIDs_y)>1))
+	for (i = 0; i<dimsize(numericwave, 0); i=i+1)
+		returnlist=returnlist+dac_channel[numericwave[i]]+","
+	endfor
+	S.dacListIDs_y=returnlist;
+	endif
+	
+	
+	
+end
+
+
+function/S scf_getRecordedFADCinfo(info_name, [column])
 	// Return a list of strings for specified column in fadcattr based on whether "record" is ticked
 	// Valid info_name ("calc_names", "raw_names", "calc_funcs", "inputs", "channels")
-	 
+
 	//column specifies whether another column of checkboxes need to be satisfied, There is
-	// notch = 5, demod = 6, resample = 8, 
-    string info_name
-    variable column 
-    variable i
-    wave fadcattr
- 
-	 string return_list = ""
-    wave/t fadcvalstr
-    for (i = 0; i<dimsize(fadcvalstr, 0); i++)
-        
-        if (paramIsDefault(column))
-        
-        	if (fadcattr[i][2] == 48) // Checkbox checked
+	// notch = 5, demod = 6, resample = 8,
+	string info_name
+	variable column
+	variable i
+	wave fadcattr
+	wave/t adc_channel
+
+	string return_list = ""
+	wave/t fadcvalstr
+	for (i = 0; i<dimsize(fadcvalstr, 0); i++)
+
+		if (paramIsDefault(column))
+
+			if (fadcattr[i][2] == 48) // Checkbox checked
 				strswitch(info_name)
 					case "calc_names":
-                		return_list = addlistItem(fadcvalstr[i][3], return_list, ";", INF)  												
+						return_list = addlistItem(fadcvalstr[i][3], return_list, ";", INF)
 						break
 					case "raw_names":
-                		return_list = addlistItem("ADC"+num2str(i), return_list, ";", INF)  						
+						return_list = addlistItem("ADC"+num2str(i), return_list, ";", INF)
 						break
 					case "calc_funcs":
-                		return_list = addlistItem(fadcvalstr[i][4], return_list, ";", INF)  						
-						break						
+						return_list = addlistItem(fadcvalstr[i][4], return_list, ";", INF)
+						break
+						//S.adcListIDs=scf_getRecordedFADCinfo("adcListIDs")
+					case "adcListIDs":
+						return_list = addlistItem(adc_channel[i], return_list, ";", INF)
+						break
 					case "inputs":
-                		return_list = addlistItem(fadcvalstr[i][1], return_list, ";", INF)  												
-						break						
+						return_list = addlistItem(fadcvalstr[i][1], return_list, ";", INF)
+						break
 					case "channels":
-                		return_list = addlistItem(fadcvalstr[i][0], return_list, ";", INF)  																		
+						return_list = addlistItem(fadcvalstr[i][0], return_list, ";", INF)
 						break
 					default:
 						abort "bad name requested: " + info_name + ". Allowed are (calc_names, raw_names, calc_funcs, inputs, channels)"
 						break
-				endswitch			
-        	endif
-        	
-        else
+				endswitch
+			endif
+
+		else
         
         	if (fadcattr[i][2] == 48 && fadcattr[i][column] == 48) // Checkbox checked
 				strswitch(info_name)
@@ -714,6 +755,7 @@ function scv_setChannels (S, channelsx, channelsy, [fastdac])
 	else
 		s.channelsy = scu_getChannelNumbers(channelsy)
     endif
+    
 end
 
 function/S scu_getDacLabel(channels, [fastdac])

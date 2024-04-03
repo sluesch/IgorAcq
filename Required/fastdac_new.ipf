@@ -305,6 +305,8 @@ Function RampMultipleFDAC(string channels, variable setpoint, [variable ramprate
 End
 
 
+
+
 Function fd_rampOutputFDAC(int channel, variable setpoint, variable ramprate) // Units: mV, mV/s
     // This function ramps one FD DAC channel to a specified setpoint at a given ramprate.
     // It checks that both the setpoint and ramprate are within their respective limits before proceeding.
@@ -455,7 +457,185 @@ end
 //////////////////////////// End of AWG stuff//////////////////////////////////////////////
 //////////////////////////////////////////////////////////////////////////////////////////
 
+function PreScanChecksFD(S)
+	struct ScanVars &S
+	
+	scc_checkRampratesFD(S)	 	// Check ramprates of x and y
+	scc_checkLimsFD(S)			// Check within software lims for x and y
+	S.lims_checked = 1  		// So record_values knows that limits have been checked!
+end
 
+function checkStartsFinsChannels(starts, fins, channels)
+	// checks that each of starts/fins/channels has the correct separators and matching length
+	string starts, fins, channels 
+
+	scu_assertSeparatorType(starts, ",")
+	scu_assertSeparatorType(fins, ",")
+	scu_assertSeparatorType(channels, ",")
+	if (itemsInList(channels) != itemsInList(starts) || itemsInList(channels) != itemsInList(fins))
+		string buf
+		sprintf buf "ERROR[checkStartsFinsChannels]: len(channels) = %d, len(starts) = %d, len(fins) = %d. They should all match\r" , itemsInList(channels), itemsInList(starts), itemsInList(fins)
+		abort buf
+	endif
+	return 1
+end
+
+function scc_checkRampratesFD(S)
+  // check if effective ramprate is higher than software limits
+  struct ScanVars &S
+  wave/T fdacvalstr
+
+	variable kill_graphs = 0
+	// Check x's won't be swept to fast by calculated sweeprate for each channel in x ramp
+	// Should work for different start/fin values for x
+	variable eff_ramprate, answer, i, k, channel
+	string question
+
+	if(numtype(strlen(s.channelsx)) == 0 && strlen(s.channelsx) != 0)  // if s.Channelsx != (null or "")
+		scu_assertSeparatorType(S.channelsx, ",")
+		for(i=0;i<itemsinlist(S.channelsx,",");i+=1)
+			eff_ramprate = abs(str2num(stringfromlist(i,S.startxs,","))-str2num(stringfromlist(i,S.finxs,",")))*(S.measureFreq/S.numptsx)
+			channel = str2num(stringfromlist(i, S.channelsx, ","))
+			if(eff_ramprate > str2num(fdacvalstr[channel][4])*1.05 || s.rampratex > str2num(fdacvalstr[channel][4])*1.05)  // Allow 5% too high for convenience
+				// we are going too fast
+				sprintf question, "DAC channel %d will be ramped at Sweeprate: %.1f mV/s and Ramprate: %.1f mV/s, software limit is set to %s mV/s. Continue?", channel, eff_ramprate, s.rampratex, fdacvalstr[channel][4]
+				answer = ask_user(question, type=1)
+				if(answer == 2)
+					kill_graphs = 1
+					break
+				endif
+			endif
+		endfor
+	endif
+  
+	// if Y channels exist, then check against rampratey (not sweeprate because only change on slow axis)	
+	if(numtype(strlen(s.channelsy)) == 0 && strlen(s.channelsy) != 0  && kill_graphs == 0)  // if s.Channelsy != (NaN or "") and not killing graphs yet 
+		scu_assertSeparatorType(S.channelsy, ",")
+		for(i=0;i<itemsinlist(S.channelsy,",");i+=1)
+			channel = str2num(stringfromlist(i, S.channelsy, ","))
+			if(s.rampratey > str2num(fdacvalstr[channel][4]))
+				sprintf question, "DAC channel %d will be ramped at %.1f mV/s, software limit is set to %s mV/s. Continue?", channel, S.rampratey, fdacvalstr[channel][4]
+				answer = ask_user(question, type=1)
+				if(answer == 2)
+					kill_graphs = 1
+					break
+				endif
+			endif
+		endfor
+	endif
+
+	if(kill_graphs == 1)  // If user selected do not continue, then kill graphs and abort
+		print("[ERROR] \"RecordValues\": User abort!")
+		dowindow/k SweepControl // kill scan control window
+		abort
+	endif
+  
+end
+
+
+function scc_checkLimsFD(S)
+	// check that start and end values are within software limits
+	struct ScanVars &S
+
+	wave/T fdacvalstr
+	variable answer, i, k
+	
+	// Make single list out of X's and Y's (checking if each exists first)
+	string channels = "", starts = "", fins = ""
+	if(numtype(strlen(s.channelsx)) == 0 && strlen(s.channelsx) != 0)  // If not NaN and not ""
+		channels = addlistitem(S.channelsx, channels, ",")
+		starts = addlistitem(S.startxs, starts, ",")
+		fins = addlistitem(S.finxs, fins, ",")
+	endif
+	if(numtype(strlen(s.channelsy)) == 0 && strlen(s.channelsy) != 0)  // If not NaN and not ""
+		channels = addlistitem(S.channelsy, channels, ",")
+		starts = addlistitem(S.startys, starts, ",")
+		fins = addlistitem(S.finys, fins, ",")
+	endif
+
+	// Check channels were concatenated correctly (Seems unnecessary, but possibly killed my device because of this...)
+	if(stringmatch(channels, "*,,*") == 1)
+		abort "ERROR[scc_checkLimsFD]: Channels list contains ',,' which means something has gone wrong and limit checking WONT WORK!!"
+	endif
+
+	// Check that start/fin for each channel will stay within software limits
+	string buffer
+	for(i=0;i<itemsinlist(channels,",");i+=1)
+		scc_checkLimsSingleFD(stringfromlist(i,channels,","), str2num(stringfromlist(i,starts,",")), str2num(stringfromlist(i,fins,",")))
+	endfor		
+end
+
+function scc_checkLimsSingleFD(channel, start, fin)
+	// Check the start/fin are within limits for channel of FastDAC 
+	// TODO: This function can be fairly easily adapted for BabyDACs too
+	string channel // Single Channel str
+	variable start, fin  // Single start, fin val for sweep
+	variable s_out, f_out, answer
+	variable channel_num = str2num(scu_getChannelNumbers(channel))
+	string question
+	
+	s_out=check_fd_limits(channel_num,start)
+	f_out=check_fd_limits(channel_num,start)
+
+	
+	if ((s_out!=start) || (f_out!=fin))
+		// we are outside limits
+		sprintf question, "DAC channel %s would be ramped outside software limits. --- Aborting!", channel
+		print question
+		abort
+		
+	endif
+end
+
+
+
+function rampToNextSetpoint(S, inner_index, [outer_index, y_only, ignore_lims])
+	// Ramps channels to next setpoint -- (FastDAC only)
+	// Note: only ramps x channels unless outer_index provided
+	Struct ScanVars &S
+	variable inner_index  // The faster sweeping axis (X)
+	variable outer_index  // The slower sweeping axis (Y)
+	variable y_only  	  // Set to 1 to only sweep the Y channels
+	variable ignore_lims  // Whether to ignore BabyDAC and FastDAC limits (makes sense if already checked previously)
+	variable k
+	svar fd
+	if (!y_only)
+		checkStartsFinsChannels(S.startxs, S.finxs, S.channelsx)
+		variable sx, fx, setpointx
+		string chx, IDname
+		for(k=0; k<itemsinlist(S.channelsx,","); k++)
+			sx = str2num(stringfromList(k, S.startxs, ","))
+			fx = str2num(stringfromList(k, S.finxs, ","))
+			chx = stringfromList(k, S.channelsx, ",")
+			setpointx = sx + (inner_index*(fx-sx)/(S.numptsx-1))
+
+			IDname = stringfromlist(k,S.daclistIDs)
+			nvar IDx = $IDname
+			RampMultipleFDAC(chx, setpointx, ramprate=S.rampratex)  //limits will be checked here again.
+		endfor
+	endif
+
+	if (!paramIsDefault(outer_index))
+		checkStartsFinsChannels(S.startys, S.finys, S.channelsy)
+		variable sy, fy, setpointy
+		string chy
+		for(k=0; k<itemsinlist(S.channelsy,","); k++)
+			sy = str2num(stringfromList(k, S.startys, ","))
+			fy = str2num(stringfromList(k, S.finys, ","))
+			chy = stringfromList(k, S.channelsy, ",")
+			setpointy = sy + (outer_index*(fy-sy)/(S.numptsy-1))
+			IDname = stringfromlist(k,S.daclistIDs_y)
+			nvar IDy = $IDname
+			RampMultipleFDAC(chy, setpointy, ramprate=S.rampratey) //limits will be checked here again.
+
+
+		endfor
+	endif
+end
+
+	
+	
+	
 
 
 function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duration, rampratex, delayx, starty, finy, channelsy, numptsy, rampratey, delayy, startxs, finxs, startys, finys, x_label, y_label, alternate,  interlaced_channels, interlaced_setpoints, comments, x_only, use_awg])
@@ -523,7 +703,11 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
 	S.duration = duration
    S.adcList = scf_getRecordedFADCinfo("channels")
    S.using_fastdac = 1
+   S.adcListIDs=scf_getRecordedFADCinfo("adcListIDs")
    S.adcLists=scf_getRecordedFADCinfo("raw_names")
+   S.fakerecords="0"
+  
+   
    S.raw_wave_names=scf_getRecordedFADCinfo("raw_names")
    svar fd
    S.instrIDs=fd
@@ -557,6 +741,8 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
    		S.channelsy = scu_getChannelNumbers(channelsy)				// converting from channel labels to numbers
 		S.y_label = scu_getDacLabel(S.channelsy)						// setting the y_label
    endif
+   	get_dacListIDs(S)
+
 scv_setLastScanVars(S)
 end
 
