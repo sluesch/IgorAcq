@@ -1045,7 +1045,6 @@ Function RampStartFD(Struct ScanVars &S, [Variable ignore_lims, Variable x_only,
     If (StrLen(S.channelsy) != 0 && x_only != 1) 
         scu_assertSeparatorType(S.channelsy, ",")
         For (i = 0; i < ItemsInList(S.channelsy, ","); i += 1)
-            NVAR fdID = $(StringFromList(i, S.daclistIDs_y))
             rampMultipleFDAC(StringFromList(i, S.channelsy, ","), Str2Num(StringFromList(i, S.startys, ",")), ramprate = S.rampratey)
         EndFor
     EndIf

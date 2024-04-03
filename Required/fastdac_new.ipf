@@ -543,7 +543,7 @@ function scc_checkLimsFD(S)
 	// Make single list out of X's and Y's (checking if each exists first)
 	string channels = "", starts = "", fins = ""
 	if(numtype(strlen(s.channelsx)) == 0 && strlen(s.channelsx) != 0)  // If not NaN and not ""
-		channels = addlistitem(S.channelsx, channels, ",")
+		channels = addlistitem(S.channelsx, channels,",")		
 		starts = addlistitem(S.startxs, starts, ",")
 		fins = addlistitem(S.finxs, fins, ",")
 	endif
@@ -552,6 +552,8 @@ function scc_checkLimsFD(S)
 		starts = addlistitem(S.startys, starts, ",")
 		fins = addlistitem(S.finys, fins, ",")
 	endif
+	channels=ReplaceString(",,", channels, ",") //* there seems to be an issue on my Mac that channels has two ,, instead of one ,. Not sure if I am doing something different or if it is the OS. for now I remove the ,, by hand
+		//*print channels
 
 	// Check channels were concatenated correctly (Seems unnecessary, but possibly killed my device because of this...)
 	if(stringmatch(channels, "*,,*") == 1)
@@ -574,9 +576,8 @@ function scc_checkLimsSingleFD(channel, start, fin)
 	variable channel_num = str2num(scu_getChannelNumbers(channel))
 	string question
 	
-	s_out=check_fd_limits(channel_num,start)
-	f_out=check_fd_limits(channel_num,start)
-
+	s_out=check_fd_limits(channel_num,start)	
+	f_out=check_fd_limits(channel_num,fin)
 	
 	if ((s_out!=start) || (f_out!=fin))
 		// we are outside limits
@@ -609,8 +610,6 @@ function rampToNextSetpoint(S, inner_index, [outer_index, y_only, ignore_lims])
 			chx = stringfromList(k, S.channelsx, ",")
 			setpointx = sx + (inner_index*(fx-sx)/(S.numptsx-1))
 
-			IDname = stringfromlist(k,S.daclistIDs)
-			nvar IDx = $IDname
 			RampMultipleFDAC(chx, setpointx, ramprate=S.rampratex)  //limits will be checked here again.
 		endfor
 	endif
@@ -624,8 +623,6 @@ function rampToNextSetpoint(S, inner_index, [outer_index, y_only, ignore_lims])
 			fy = str2num(stringfromList(k, S.finys, ","))
 			chy = stringfromList(k, S.channelsy, ",")
 			setpointy = sy + (outer_index*(fy-sy)/(S.numptsy-1))
-			IDname = stringfromlist(k,S.daclistIDs_y)
-			nvar IDy = $IDname
 			RampMultipleFDAC(chy, setpointy, ramprate=S.rampratey) //limits will be checked here again.
 
 
