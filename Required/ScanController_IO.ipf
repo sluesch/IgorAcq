@@ -236,13 +236,14 @@ end
 function/s sc_instrumentLogs()
 	// Runs all getinstrStatus() functions, and adds results to json string (to be stored in sweeplogs)
 	// Note: all log strings must be valid JSON objects 
-    string jstr
+    string jstr=""
     
 	//sc_openInstrConnections(0)  // Reopen connections before asking for status in case it has been a long time (?)[Vahid: how long would be a long time??] since the beginning of the scan
 	wave /t sc_Instr
 	variable i=0, j=0, addQuotes=0
 	string command="", val=""
 	string /G sc_log_buffer=""
+
 	for(i=0;i<DimSize(sc_Instr, 0);i+=1)
 		sc_log_buffer=""
 		command = TrimString(sc_Instr[i][2])

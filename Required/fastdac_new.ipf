@@ -37,7 +37,6 @@ function openFastDAC(portnum,[verbose])
 	string response = ""
 
 	openHTTPinstr(comm, verbose=verbose)  // Sets svar (instrID) = url
-	//scf_addFDinfos(IDname,http_address,8,4)
 
 	if (verbose==1)
 		response=getHTTP(http_address,"idn","");
@@ -49,7 +48,7 @@ end
 
 
 function initFastDAC()
-wave/t ADC_channel, DAC_channel, DAC_label
+wave/t ADC_channel, DAC_channel, DAC_label, fdacvalstr
 getFDIDs()
 
 	// hardware limit (mV)
@@ -67,6 +66,10 @@ getFDIDs()
 	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
 	//execute(cmd)
 	execute("after1()")
+	fdacvalstr[][3]=DAC_label[p]
+
+	
+	
 end
 
 
