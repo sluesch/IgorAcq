@@ -9,7 +9,7 @@
 ////////////////////
 
 
-function openFastDAC(IDname, portnum [verbose])
+function openFastDAC(portnum,[verbose])
 	// open/test a connection to the LS37X RPi interface written by Ovi
 	//      the whole thing _should_ work for LS370 and LS372
 	// instrID is the name of the global variable that will be used for communication
@@ -19,10 +19,10 @@ function openFastDAC(IDname, portnum [verbose])
 	// verbose=0 will not print any information about the connection
 
 
-	string IDname
 	string portnum
 	variable verbose
-	
+	string IDname="fd"
+
 	string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
 
 
@@ -884,6 +884,89 @@ function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
 variable speed=gnoise(1)
 return speed
 end
+
+///////////////////////
+//// PID functions ////
+///////////////////////
+
+function startPID(instrID)
+	// Starts the PID algorithm on DAC and ADC channels 0
+	// make sure that the PID algorithm does not return any characters.
+	variable instrID
+	
+	string cmd=""
+	sprintf cmd, "START_PID"
+	writeInstr(instrID, cmd+"\r")
+end
+
+
+function stopPID(instrID)
+	// stops the PID algorithm on DAC and ADC channels 0
+	variable instrID
+	
+	string cmd=""
+	sprintf cmd, "STOP_PID"
+	writeInstr(instrID, cmd+"\r")
+end
+
+function setPIDTune(instrID, kp, ki, kd)
+	// sets the PID tuning parameters
+	variable instrID, kp, ki, kd
+	
+	string cmd=""
+	// specify to print 9 digits after the decimal place
+	sprintf cmd, "SET_PID_TUNE,%.9f,%.9f,%.9f",kp,ki,kd
+
+	writeInstr(instrID, cmd+"\r")
+end
+
+function setPIDSetp(instrID, setp)
+	// sets the PID set point, in mV
+	variable instrID, setp
+	
+	string cmd=""
+	sprintf cmd, "SET_PID_SETP,%f",setp
+
+   	writeInstr(instrID, cmd+"\r")
+end
+
+
+function setPIDLims(instrID, lower,upper) //mV, mV
+	// sets the limits of the controller output, in mV 
+	variable instrID, lower, upper
+	
+	string cmd=""
+	sprintf cmd, "SET_PID_LIMS,%f,%f",lower,upper
+
+   	writeInstr(instrID, cmd+"\r")
+end
+
+function setPIDDir(instrID, direct) // 0 is reverse, 1 is forward
+	// sets the direction of PID control
+	// The default direction is forward 
+	// The process variable of a reverse process decreases with increasing controller output 
+	// The process variable of a direct process increases with increasing controller output 
+	variable instrID, direct 
+	
+	string cmd=""
+	sprintf cmd, "SET_PID_DIR,%d",direct
+   	writeInstr(instrID, cmd+"\r")
+end
+
+function setPIDSlew(instrID, [slew]) // maximum slewrate in mV per second
+	// the slew rate is proportional how fast the controller output is allowed to ramp
+	variable instrID, slew 
+	
+	if(paramisdefault(slew))
+		slew = 10000000.0
+	endif
+		
+	string cmd=""
+	sprintf cmd, "SET_PID_SLEW,%.9f",slew
+	print/D cmd
+   	writeInstr(instrID, cmd+"\r")
+end
+
 
 
 
