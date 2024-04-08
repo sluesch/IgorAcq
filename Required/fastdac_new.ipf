@@ -48,7 +48,8 @@ end
 
 
 function initFastDAC()
-wave/t ADC_channel, DAC_channel, DAC_label, fdacvalstr
+wave/t ADC_channel, DAC_channel, DAC_label,fdacvalstr
+nvar filenum
 getFDIDs()
 
 	// hardware limit (mV)
@@ -66,12 +67,16 @@ getFDIDs()
 	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
 	//execute(cmd)
 	execute("after1()")
-	fdacvalstr[][3]=DAC_label[p]
+	if (filenum>0) /// this only works if fdacvalstr has been created which happens after
+
+		fdacvalstr[][3]=DAC_label[p]
+	endif
 
 	
 	
 end
 
+		fdacvalstr[][3]=DAC_label[p]
 
 
 window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
@@ -226,7 +231,7 @@ window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
 	SetVariable sc_freqBox1, pos={6,500},size={40,20}, value=sc_freqAW1 ,side=1,title="\Z14 ", disable = 1, help = {"Shows the frequency of AW1"}
 	button setupAWGfdac,pos={260,555},size={110,20},proc=scw_setupAWG,title="Setup AWG", disable = 1
 	
-	
+
 
 	 
 

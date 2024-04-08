@@ -178,7 +178,7 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 	make /o/N=(sc_instrLimit,3) instrBoxAttr = 2
 	make /t/o/N=(sc_instrLimit,3) sc_Instr
 
-	sc_Instr[0][0] = "openMultipleFDACs(\"12441\", verbose=1)"
+	sc_Instr[0][0] = "openFastDAC(\"12441\", verbose=0)"
 	//sc_Instr[1][0] = "openLS370connection(\"ls\", \"http://lksh370-xld.qdev-b111.lab:49300/api/v1/\", \"bfbig\", verbose=1)"
 	//sc_Instr[2][0] = "openIPS120connection(\"ips1\",\"GPIB::25::INSTR\", 9.569, 9000, 182, verbose=0, hold = 1)"
 	sc_Instr[0][2] = "getFDstatus()"
