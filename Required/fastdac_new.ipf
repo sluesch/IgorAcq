@@ -45,9 +45,97 @@ function openFastDAC(portnum,[verbose])
 end
 
 
+```
+
+function init_dac_and_adc(fastdac_string)
+	// creates two waves 'dac_table' and 'adc_table' which are used to send information to Python...
+	string fastdac_string // expecting e.g. "17;2;34"
+	
+	// if dac and adc ever change these values need updating
+	int num_dac = 8
+	int num_adc = 4
+	
+	variable num_fastdac = ItemsInList(fastdac_string, ";")
+	int fastdac_count = 0
+	string temp_string
+	
+	////////////////////////////
+	///// create DAC table /////
+	////////////////////////////
+	int dac_count = 0
+	make /o /T /n=(num_fastdac * num_dac, 4) dac_table
+	wave /t dac_table
+	int i
+	for  (i=0; i < num_fastdac * num_dac; i++)
+	
+		// column 0
+		temp_string = stringFromList(fastdac_count, fastdac_string, ";") + "." + num2str(dac_count)
+		dac_table[i][0] = temp_string
+		
+		// column 1
+		temp_string = "gate" + num2str(i)
+		dac_table[i][1] = temp_string
+		
+		// column 2
+		temp_string = "-1000,1000"
+		dac_table[i][2] = temp_string
+		
+		// column 3
+		temp_string = "100000"
+		dac_table[i][3] = temp_string
+		
+		
+		if (dac_count < num_dac - 1)
+			dac_count += 1
+		else
+			dac_count = 0
+			fastdac_count += 1
+		endif
+	endfor
+	
+	
+	////////////////////////////
+	///// create ADC table /////
+	////////////////////////////
+	int adc_count = 0
+	fastdac_count = 0
+	make /o /T /n=(num_fastdac * num_adc, 4) adc_table
+	wave /t adc_table
+	for  (i=0; i < num_fastdac * num_adc; i++)
+	
+		// column 0
+		temp_string = stringFromList(fastdac_count, fastdac_string, ";") + "." + num2str(adc_count)
+		adc_table[i][0] = temp_string
+		
+		// column 1
+		temp_string = "adc" + num2str(i)
+		adc_table[i][1] = temp_string
+		
+		// column 2
+		temp_string = "-1000,1000"
+//		adc_table[i][2] = temp_string
+		
+		// column 3
+		temp_string = "100000"
+//		adc_table[i][3] = temp_string
+		
+		
+		if (adc_count < num_adc - 1)
+			adc_count += 1
+		else
+			adc_count = 0
+			fastdac_count += 1
+		endif
+	endfor
+	
+	
+
+end
 
 
 function initFastDAC()
+// usage: init_dac_and_adc("1;2;4;6")
+//Edit/K=0 root:adc_table;Edit/K=0 root:dac_table
 wave/t ADC_channel, DAC_channel, DAC_label,fdacvalstr
 nvar filenum
 getFDIDs()
