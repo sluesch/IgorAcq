@@ -200,65 +200,6 @@ function scw_OpenInstrButton(action) : Buttoncontrol
 	sc_openInstrConnections(1)
 end
 
-//function scw_CheckboxClicked(ControlName, Value)
-//	string ControlName
-//	variable value
-//	structure scanvars &S
-//	
-//	string indexstring
-//	wave sc_RawRecord, sc_RawPlot, sc_CalcRecord, sc_CalcPlot, sc_measAsync
-//	nvar sc_PrintRaw, sc_PrintCalc
-//	nvar/z sc_Printfadc, sc_Saverawfadc, sc_demodx, sc_demody, sc_plotRaw, sc_hotcold // FastDAC specific
-//	variable index
-//	string expr
-//	if (stringmatch(ControlName,"sc_RawRecordCheckBox*"))
-//		expr="sc_RawRecordCheckBox([[:digit:]]+)"
-//		SplitString/E=(expr) controlname, indexstring
-//		index = str2num(indexstring)
-//		sc_RawRecord[index] = value
-//	elseif (stringmatch(ControlName,"sc_CalcRecordCheckBox*"))
-//		expr="sc_CalcRecordCheckBox([[:digit:]]+)"
-//		SplitString/E=(expr) controlname, indexstring
-//		index = str2num(indexstring)
-//		sc_CalcRecord[index] = value
-//	elseif (stringmatch(ControlName,"sc_RawPlotCheckBox*"))
-//		expr="sc_RawPlotCheckBox([[:digit:]]+)"
-//		SplitString/E=(expr) controlname, indexstring
-//		index = str2num(indexstring)
-//		sc_RawPlot[index] = value		
-//	elseif (stringmatch(ControlName,"sc_CalcPlotCheckBox*"))
-//		expr="sc_CalcPlotCheckBox([[:digit:]]+)"
-//		SplitString/E=(expr) controlname, indexstring
-//		index = str2num(indexstring)
-//		sc_CalcPlot[index] = value				
-//	elseif (stringmatch(ControlName,"sc_AsyncCheckBox*"))
-//		expr="sc_AsyncCheckBox([[:digit:]]+)"
-//		SplitString/E=(expr) controlname, indexstring
-//		index = str2num(indexstring)
-//		sc_measAsync[index] = value
-//	elseif(stringmatch(ControlName,"sc_PrintRawBox"))
-//		sc_PrintRaw = value
-//	elseif(stringmatch(ControlName,"sc_PrintCalcBox"))
-//		sc_PrintCalc = value
-//	elseif(stringmatch(ControlName,"sc_PrintfadcBox")) // FastDAC window
-//		sc_Printfadc = value
-//	elseif(stringmatch(ControlName,"sc_SavefadcBox")) // FastDAC window
-//		sc_Saverawfadc = value
-//	elseif(stringmatch(ControlName,"sc_plotRawBox")) // FastDAC window
-//		sc_plotRaw = value
-//	elseif(stringmatch(ControlName,"sc_demodyBox")) // FastDAC window
-//		sc_demody = value
-//	elseif(stringmatch(ControlName,"sc_hotcoldBox")) // FastDAC window
-//		sc_hotcold = value
-//
-//	endif
-//end
-
-
-
-
-
-
 function scfw_update_fadc(action) : ButtonControl
 	string action
 	svar sc_fdackeys

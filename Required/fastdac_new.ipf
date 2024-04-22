@@ -48,7 +48,8 @@ end
 ```
 
 function init_dac_and_adc(fastdac_string)
-	// creates two waves 'dac_table' and 'adc_table' which are used to send information to Python...
+	// creates two waves 'dac_table' and 'adc_table' which are used to create fastDAC window
+//	example: init_dac_and_adc("5;3;6;8")
 	string fastdac_string // expecting e.g. "17;2;34"
 	
 	// if dac and adc ever change these values need updating
@@ -81,7 +82,7 @@ function init_dac_and_adc(fastdac_string)
 		dac_table[i][2] = temp_string
 		
 		// column 3
-		temp_string = "100000"
+		temp_string = "1000"
 		dac_table[i][3] = temp_string
 		
 		
@@ -111,15 +112,6 @@ function init_dac_and_adc(fastdac_string)
 		temp_string = "adc" + num2str(i)
 		adc_table[i][1] = temp_string
 		
-		// column 2
-		temp_string = "-1000,1000"
-//		adc_table[i][2] = temp_string
-		
-		// column 3
-		temp_string = "100000"
-//		adc_table[i][3] = temp_string
-		
-		
 		if (adc_count < num_adc - 1)
 			adc_count += 1
 		else
@@ -136,7 +128,13 @@ end
 function initFastDAC()
 // usage: init_dac_and_adc("1;2;4;6")
 //Edit/K=0 root:adc_table;Edit/K=0 root:dac_table
-wave/t ADC_channel, DAC_channel, DAC_label,fdacvalstr
+wave/t adc_table, dac_table
+wave/t fdacvalstr
+make/o/t/n=(dimsize(ADC_table,0)) ADC_channel
+make/o/t/n=(dimsize(DAC_table,0)) DAC_channel
+ADC_channel=adc_table[p][0]
+DAC_channel=dac_table[p][0]
+
 nvar filenum
 getFDIDs()
 
@@ -154,17 +152,14 @@ getFDIDs()
 	killwindow/z ScanControllerFastDAC
 	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
 	//execute(cmd)
+	killwindow/z after1
 	execute("after1()")
-	if (filenum>0) /// this only works if fdacvalstr has been created which happens after
-
-		fdacvalstr[][3]=DAC_label[p]
-	endif
-
-	
-	
+	if (filenum>0) /// this only works if fdacvalstr has been created which happens only in scfw_CreateControlWaves
+		fdacvalstr[][3]=DAC_table[p][1]
+		fdacvalstr[][2]=DAC_table[p][2]
+		fdacvalstr[][4]=DAC_table[p][3]
+	endif	
 end
-
-		fdacvalstr[][3]=DAC_label[p]
 
 
 window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
