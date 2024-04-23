@@ -14,7 +14,7 @@ function openFastDAC(portnum,[verbose])
 	//      the whole thing _should_ work for LS370 and LS372
 	// instrID is the name of the global variable that will be used for communication
 	// http_address is exactly what it sounds like
-	//	it should look something like this: http://lcmi-docs.qdev-h101.lab:12441/api/v1/
+	//	it should look something like this: http://lcmi-docs.qdev-h101.lab:xxxxx/api/v1/
 
 	// verbose=0 will not print any information about the connection
 
@@ -24,7 +24,7 @@ function openFastDAC(portnum,[verbose])
 	string IDname="fd"
 
 	string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
-	//http_address="master.qdev-h101.lab:14441"
+	//http_address="master.qdev-h101.lab:xxx"
 
 
 
@@ -66,26 +66,30 @@ function init_dac_and_adc(fastdac_string)
 	///// create DAC table /////
 	////////////////////////////
 	int dac_count = 0
-	make /o /T /n=(num_fastdac * num_dac, 4) dac_table
+	make /o /T /n=(num_fastdac * num_dac, 5) dac_table
 	wave /t dac_table
 	int i
 	for  (i=0; i < num_fastdac * num_dac; i++)
 	
-		// column 0
+		// column 0: DAC channel str
 		temp_string = stringFromList(fastdac_count, fastdac_string, ";") + "." + num2str(dac_count)
 		dac_table[i][0] = temp_string
 		
-		// column 1
-		temp_string = "gate" + num2str(i)
+		// column 1: output
+		temp_string = num2str(gnoise(10))
 		dac_table[i][1] = temp_string
 		
 		// column 2
 		temp_string = "-10000,10000"
 		dac_table[i][2] = temp_string
 		
-		// column 3
-		temp_string = "10000"
+		// column 3: label
+		temp_string = "gate" + num2str(i)
 		dac_table[i][3] = temp_string
+		
+		// column 4: ramprate
+		temp_string = "10000"
+		dac_table[i][4] = temp_string
 		
 		
 		if (dac_count < num_dac - 1)
@@ -102,7 +106,7 @@ function init_dac_and_adc(fastdac_string)
 	////////////////////////////
 	int adc_count = 0
 	fastdac_count = 0
-	make /o /T /n=(num_fastdac * num_adc, 4) adc_table
+	make /o /T /n=(num_fastdac * num_adc, 8) adc_table
 	wave /t adc_table
 	for  (i=0; i < num_fastdac * num_adc; i++)
 	
@@ -110,9 +114,21 @@ function init_dac_and_adc(fastdac_string)
 		temp_string = stringFromList(fastdac_count, fastdac_string, ";") + "." + num2str(adc_count)
 		adc_table[i][0] = temp_string
 		
-		// column 1
-		temp_string = "adc" + num2str(i)
+		// column 1: input
+		temp_string = num2str(gnoise(10))
 		adc_table[i][1] = temp_string
+		
+		// column 3
+		temp_string = "wave" + num2str(i)
+		adc_table[i][3] = temp_string
+		
+		// column 4
+		temp_string = "ADC" + num2str(i)
+		adc_table[i][4] = temp_string
+		
+		// column 7
+		temp_string = num2str(1)
+		adc_table[i][7] = temp_string
 		
 		if (adc_count < num_adc - 1)
 			adc_count += 1
@@ -156,13 +172,8 @@ getFDIDs()
 	//sprintf cmd, "FastDACWindow(%f,%f,%f,%f)", v_left, v_right, v_top, v_bottom
 	//execute(cmd)
 	killwindow/z after1
-	execute("after1()")
-	if (filenum>0) /// this only works if fdacvalstr has been created which happens only in scfw_CreateControlWaves
-		fdacvalstr[][3]=DAC_table[p][1]
-		fdacvalstr[][2]=DAC_table[p][2]
-		fdacvalstr[][4]=DAC_table[p][3]
-	endif	
-	setadc_speed()
+	execute("after1()")	
+	//setadc_speed()
 end
 
 function setADC_speed()
@@ -327,13 +338,7 @@ window FastDACWindow(v_left,v_right,v_top,v_bottom) : Panel
 	SetVariable sc_wnumawgBox,pos={10,499},size={55,25},value=sc_wnumawg,side=1,title ="\Z14AW", help={"0 or 1"}, disable = 1
 	SetVariable sc_freqBox0, pos={6,500},size={40,20}, value=sc_freqAW0 ,side=0,title="\Z14 ", disable = 1, help = {"Shows the frequency of AW0"}
 	SetVariable sc_freqBox1, pos={6,500},size={40,20}, value=sc_freqAW1 ,side=1,title="\Z14 ", disable = 1, help = {"Shows the frequency of AW1"}
-	button setupAWGfdac,pos={260,555},size={110,20},proc=scw_setupAWG,title="Setup AWG", disable = 1
-	
-
-
-	 
-
-	
+	button setupAWGfdac,pos={260,555},size={110,20},proc=scw_setupAWG,title="Setup AWG", disable = 1	
 endmacro
 
 window scfw_fdacInitWindow() : Panel
@@ -900,7 +905,11 @@ end
 //// API functions ////
 ///////////////////////
 
-/// http://lcmi-docs.qdev-h101.lab:14441/swagger/
+/// http://lcmi-docs.qdev-h101.lab:xxx/swagger/
+
+curl -X 'GET' \
+  'http://lcmi-docs.qdev-h101.lab:xxx/api/v1/get-idn/1' \
+  -H 'accept: application/json'
 
 function set_one_fadcSpeed(int adcValue,variable speed)
 	svar fd
@@ -913,6 +922,16 @@ function set_one_fadcSpeed(int adcValue,variable speed)
 	String headers = "accept: application/json\nContent-Type: application/json"
 	// Perform the HTTP PUT request
 	String response = postHTTP(fd, cmd, payload, headers)
+end
+
+function get_one_IDN()
+	svar fd
+	wave/t ADC_channel
+	//string	response=getHTTP(fd,"get-idn/"+ADC_channel(),"");
+	string value
+	//value=getjsonvalue(response,"sampling_time_us")
+	//variable speed = roundNum(1.0/str2num(value)*1.0e6,0)
+	//return speed
 end
 
 function get_one_fadcSpeed(int adcValue)
@@ -958,7 +977,7 @@ end
 
 function sample_ADC(string adclist, variable nr_samples)
 	svar fd
-	variable chunksize=1200
+	variable chunksize=2500
 	String cmd = "run-samples-acquisition"
 	String payload=""
 	payload+= "{\"adc_list\": ["
@@ -1195,5 +1214,28 @@ function getFDIDs()
 	matrixop/o rounded=round(numconvert)
 	FDecimate(rounded, "FDIDs", 4)	
 end
+
+
+Step 1: Initialize the array
+- Let `active_dacs[]` and `active_adcs[]` be arrays of size 4 (for 4 boxes), initialized to zero.
+- Let `total_reads_per_box[]` be an array of size 4, initialized to zero.
+
+Step 2: Mark active DACs and ADCs
+- For each DAC in `dac_locations`, increment `active_dacs[dac_location]`.
+- For each ADC in `adc_locations`, increment `active_adcs[adc_location]`.
+
+Step 3: Calculate reads required to balance the load
+- Calculate `total_active_boxes` by counting non-zero entries in `active_dacs[]` and `active_adcs[]` combined.
+- For each box, calculate `max_reads` which is the maximum of any individual count in `active_adcs[]`.
+
+Step 4: Assign ADC reads
+- For each box i from 1 to 4:
+  - If `active_dacs[i] > 0 OR active_adcs[i] > 0` then:
+    - `needed_adcs = max(max_reads - active_adcs[i], 0)`
+    - `reads_per_box[i] = active_adcs[i] + needed_adcs`
+
+Step 5: Output the number of reads per box
+- The result is stored in `reads_per_box[]`, where each entry indicates the total ADC reads (real and fake) for each box.
+
 
 

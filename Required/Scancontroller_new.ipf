@@ -23,16 +23,16 @@ function scfw_fdacCheckForOldInit(numDACCh,numADCCh)
 			print "[FastDAC] Init to old values"
 		elseif(response == -1)
 			// Init to default values
-			scfw_CreateControlWaves(numDACCh,numADCCh)
+			scfw_CreateControlWaves()
 			print "[FastDAC] Init to default values"
 		else
 			print "[Warning] \"scfw_fdacCheckForOldInit\": Bad user input - Init to default values"
-			scfw_CreateControlWaves(numDACCh,numADCCh)
+			scfw_CreateControlWaves()
 			response = -1
 		endif
 	else
 		// Init to default values
-		scfw_CreateControlWaves(numDACCh,numADCCh)
+		scfw_CreateControlWaves()
 		response = -1
 	endif
 
@@ -59,51 +59,28 @@ function scfw_fdacAskUser(numDACCh)
 end
 
 
-function scfw_CreateControlWaves(numDACCh,numADCCh)
+function scfw_CreateControlWaves()
 //creates all waves and strings necessary for initfastDAC()
-	variable numDACCh,numADCCh
+	wave fdacvalstr, dac_table
+	wave fadcvalstr, adc_table
+	
+	variable numdacch=dimsize(dac_table,0)
+	variable numadcch=dimsize(adc_table,0)
+	
+	variable i
+	
+	duplicate/o dac_table, fdacvalstr
+	duplicate/o adc_table, fadcvalstr
 
-	// create waves for DAC part
-	make/o/t/n=(numDACCh) fdacval0 = "0"				// Channel
-	make/o/t/n=(numDACCh) fdacval1 = "0"				// Output /mV
-	make/o/t/n=(numDACCh) fdacval2 = "-1000,1000"	// Limits /mV
-	make/o/t/n=(numDACCh) fdacval3 = ""					// Labels
-	make/o/t/n=(numDACCh) fdacval4 = "1000"			// Ramprate limit /mV/s
-	variable i=0
-	for(i=0;i<numDACCh;i+=1)
-		fdacval0[i] = num2istr(i)
-	endfor
-	concatenate/o {fdacval0,fdacval1,fdacval2,fdacval3,fdacval4}, fdacvalstr
-	duplicate/o/R=[][1] fdacvalstr, old_fdacvalstr
+	duplicate/o dac_table, old_fdacvalstr
 	make/o/n=(numDACCh) fdacattr0 = 0
 	make/o/n=(numDACCh) fdacattr1 = 2
 	concatenate/o {fdacattr0,fdacattr1,fdacattr1,fdacattr1,fdacattr1}, fdacattr
 
-	//create waves for ADC part
-	make/o/t/n=(numADCCh) fadcval0 = "0"	// Channel
-	make/o/t/n=(numADCCh) fadcval1 = ""		// Input /mV  (initializes empty otherwise false reading)
-	make/o/t/n=(numADCCh) fadcval2 = ""		// Record (1/0)
-	make/o/t/n=(numADCCh) fadcval3 = ""		// Wave Name
-	make/o/t/n=(numADCCh) fadcval4 = ""		// Calc (e.g. ADC0*1e-6)
-	
-	make/o/t/n=(numADCCh) fadcval5 = ""		// Resample (1/0) // Nfilter
-	make/o/t/n=(numADCCh) fadcval6 = ""		// Notch filter (1/0) //Demod
-	make/o/t/n=(numADCCh) fadcval7 = "1"	// Demod (1/0) //Harmonic
-	make/o/t/n=(numADCCh) fadcval8 = ""		// Demod (1/0) // Resample
-	
-	for(i=0;i<numADCCh;i+=1)
-		fadcval0[i] = num2istr(i)
-		fadcval3[i] = "wave"+num2istr(i)
-		fadcval4[i] = "ADC"+num2istr(i)
-	endfor
-	//concatenate/o {fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7,fadcval8}, fadcvalstr // added 5 & 6 for resample and notch filter
-		concatenate/o {fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7}, fadcvalstr // removed 8 since resampling is now done by default
-
 	make/o/n=(numADCCh) fadcattr0 = 0
 	make/o/n=(numADCCh) fadcattr1 = 2
 	make/o/n=(numADCCh) fadcattr2 = 32
-	//concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr // added fadcattr2 twice for two checkbox commands?
-		concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr /// removed 8 since resampling is now done by default
+	concatenate/o {fadcattr0,fadcattr0,fadcattr2,fadcattr1,fadcattr1, fadcattr2, fadcattr2, fadcattr1, fadcattr2}, fadcattr /// removed 8 since resampling is now done by default
 
 
 	
@@ -178,7 +155,7 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 	make /o/N=(sc_instrLimit,3) instrBoxAttr = 2
 	make /t/o/N=(sc_instrLimit,3) sc_Instr
 
-	sc_Instr[0][0] = "openFastDAC(\"12441\", verbose=0)"
+	sc_Instr[0][0] = "openFastDAC(\"xxxxx\", verbose=0)"
 	//sc_Instr[1][0] = "openLS370connection(\"ls\", \"http://lksh370-xld.qdev-b111.lab:49300/api/v1/\", \"bfbig\", verbose=1)"
 	//sc_Instr[2][0] = "openIPS120connection(\"ips1\",\"GPIB::25::INSTR\", 9.569, 9000, 182, verbose=0, hold = 1)"
 	sc_Instr[0][2] = "getFDstatus()"
@@ -189,9 +166,7 @@ function scfw_CreateControlWaves(numDACCh,numADCCh)
 
 
 	// clean up
-	killwaves fdacval0,fdacval1,fdacval2,fdacval3,fdacval4
 	killwaves fdacattr0,fdacattr1
-	killwaves fadcval0,fadcval1,fadcval2,fadcval3,fadcval4, fadcval5, fadcval6, fadcval7,fadcval8 // added 5,6 for cleanup
 	killwaves fadcattr0,fadcattr1,fadcattr2
 end
 
@@ -2890,6 +2865,303 @@ function ask_user(question, [type])
 	doalert type, question
 	return V_flag
 end
+
+
+////////////////////////////////////////////////////////////////
+///////////////// Slow ScanController ONLY ////////////////////  scw_... (ScanControlWindow...)
+////////////////////////////////////////////////////////////////
+// Slow == only slow FastDAC compatible
+
+function InitScanController([configFile])
+	// Open the Slow ScanController window (not FastDAC)
+	string configFile // use this to point to a specific old config
+
+	GetFileFolderInfo/Z/Q/P=data  // Check if data path is definded
+	if(v_flag != 0 || v_isfolder != 1)
+		abort "Data path not defined!\n"
+	endif
+
+	string /g sc_colormap = "VioletOrangeYellow"
+	string /g slack_url =  "https://hooks.slack.com/services/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" // url for slack alert
+	variable /g sc_save_time = 0 // this will record the last time an experiment file was saved
+    variable/g sc_abortsweep=0, sc_pause=0, sc_abortnosave=0 // Make sure these are initialized
+
+	string /g sc_hostname = getHostName() // get machine name
+
+	// check if a path is defined to backup data
+	//*sc_checkBackup()
+	
+	// check if we have the correct SQL driver
+	sc_checkSQLDriver()
+	
+	// create/overwrite setup path. All instrument/interface configs are stored here.
+	newpath /C/O/Q setup getExpPath("setup", full=3)
+
+	// deal with config file
+	string /g sc_current_config = ""
+	newpath /C/O/Q config getExpPath("config", full=3) // create/overwrite config path
+	// make some waves needed for the scancontroller window
+	variable /g sc_instrLimit = 20 // change this if necessary, seeems fine
+	make /o/N=(sc_instrLimit,3) instrBoxAttr = 2
+	
+	if(paramisdefault(configFile))
+		// look for newest config file
+		string filelist = greplist(indexedfile(config,-1,".json"),"sc")
+	
+			// These arrays should have the same size. Their indeces correspond to each other.
+			make/t/o sc_RawWaveNames = {"g1x", "g1y","I_leak","ADC"} // Wave names to be created and saved
+			make/o sc_RawRecord = {0,0,0,0} // Whether you want to record and save the data for this wave
+			make/o sc_RawPlot = {0,0,0,0} // Whether you want to plot the data for this wave
+			make/t/o sc_RawScripts = {"get_one_FADCChannel(channel)","readSRSx(srs)", "readSRSy(srs)","getK2400current(k2400)"}
+
+			// And these waves should be the same size too
+			make/t/o sc_CalcWaveNames = {"", ""} // Calculated wave names
+			make/t/o sc_CalcScripts = {"",""} // Scripts to calculate stuff
+			make/o sc_CalcRecord = {0,0} // Include this calculated field or not
+			make/o sc_CalcPlot = {0,0} // Whether you want to plot the data for this wave
+			make /o sc_measAsync = {0,0}
+
+			// Print variables
+			variable/g sc_PrintRaw = 1,sc_PrintCalc = 1
+			
+			// Clean up volatile memory
+			variable/g sc_cleanup = 0
+
+			// instrument wave
+			make /t/o/N=(sc_instrLimit,3) sc_Instr
+			sc_Instr=""
+
+			sc_Instr[0][0] = "openFastDAC(\"xxx\", verbose=0)"
+			//sc_Instr[1][0] = "openLS370connection(\"ls\", \"http://lksh370-xld.qdev-b111.lab:49300/api/v1/\", \"bfbig\", verbose=1)"
+			//sc_Instr[2][0] = "openIPS120connection(\"ips1\",\"GPIB::25::INSTR\", 9.569, 9000, 182, verbose=0, hold = 1)"
+			sc_Instr[0][2] = "getFDstatus()"
+			//sc_Instr[1][2] = "getls370Status(\"ls\")"
+			//sc_Instr[2][2] = "getipsstatus(ips1)"
+			//sc_Instr[3][2] = "getFDstatus(\"fd2\")"
+			//sc_Instr[4][2] = "getFDstatus(\"fd3\")"
+
+
+			
+			
+//		openMultipleFDACs("13,7,4", verbose=0)
+//openLS370connection("ls", "http://lksh370-xld.qdev-b111.lab:49300/api/v1/", "bfbig", verbose=0)
+//openIPS120connection("ips1", "GPIB0::25::INSTR", 9.569, 9000, 182, verbose=0, hold = 1)
+
+			nvar/z filenum
+			if(!nvar_exists(filenum))
+				print "Initializing FileNum to 0 since it didn't exist before.\n"
+				variable /g filenum=0
+			else
+				printf "Current filenum is %d\n", filenum
+			endif
+//		endif
+	else
+		scw_loadConfig()
+	endif
+	
+	// close all VISA sessions and create wave to hold
+	// all Resource Manager sessions, so that they can
+	// be closed at each call InitializeWaves()
+	killVISA()
+	wave/z viRm
+	if(waveexists(viRm))
+		killwaves viRM
+	endif
+	make/n=0 viRM
+
+	scw_rebuildwindow()
+end
+
+
+function scw_rebuildwindow()
+	string cmd=""
+	getwindow/z ScanController1 wsizeRM
+	dowindow /k ScanController1
+	sprintf cmd, "ScanController(%f,%f,%f,%f)", v_left,v_right,v_top,v_bottom
+	execute(cmd)
+end
+
+
+Window ScanController(v_left,v_right,v_top,v_bottom) : Panel
+	variable v_left,v_right,v_top,v_bottom
+	variable sc_InnerBoxW = 660, sc_InnerBoxH = 32, sc_InnerBoxSpacing = 2
+
+	if (numpnts(sc_RawWaveNames) != numpnts(sc_RawRecord) ||  numpnts(sc_RawWaveNames) != numpnts(sc_RawScripts))
+		print "sc_RawWaveNames, sc_RawRecord, and sc_RawScripts waves should have the number of elements.\nGo to the beginning of InitScanController() to fix this.\n"
+		abort
+	endif
+
+	if (numpnts(sc_CalcWaveNames) != numpnts(sc_CalcRecord) ||  numpnts(sc_CalcWaveNames) != numpnts(sc_CalcScripts))
+		print "sc_CalcWaveNames, sc_CalcRecord, and sc_CalcScripts waves should have the number of elements.\n  Go to the beginning of InitScanController() to fix this.\n"
+		abort
+	endif
+
+	PauseUpdate; Silent 1		// building window...
+	dowindow /K ScanController
+	NewPanel /W=(10,10,sc_InnerBoxW + 30,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+90) /N=ScanController
+	if(v_left+v_right+v_top+v_bottom > 0)
+		MoveWindow/w=ScanController v_left,v_top,V_right,v_bottom
+	endif
+	ModifyPanel frameStyle=2
+	ModifyPanel fixedSize=0
+	SetDrawLayer UserBack
+
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 13,29,"Wave Name"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 130,29,"Record"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 200,29,"Plot"
+	//SetDrawEnv fsize= 16,fstyle= 1	
+	//DrawText 250,29,"Async"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 320,29,"Raw Script (ex: ReadSRSx(srs1)"
+
+	string cmd = ""
+	variable i=0
+	do
+		DrawRect 9,30+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing),5+sc_InnerBoxW,30+sc_InnerBoxH+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)
+		cmd="SetVariable sc_RawWaveNameBox" + num2istr(i) + " pos={13, 37+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)}, size={110, 0}, fsize=14, title=\" \", value=sc_RawWaveNames[i]"
+		execute(cmd)
+		cmd="CheckBox sc_RawRecordCheckBox" + num2istr(i) + ", proc=scw_CheckboxClicked, pos={150,40+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)}, value=" + num2str(sc_RawRecord[i]) + " , title=\"\""
+		execute(cmd)
+		cmd="CheckBox sc_RawPlotCheckBox" + num2istr(i) + ", proc=scw_CheckboxClicked, pos={210,40+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)}, value=" + num2str(sc_RawPlot[i]) + " , title=\"\""
+		execute(cmd)
+		//cmd="CheckBox sc_AsyncCheckBox" + num2istr(i) + ", proc=scw_CheckboxClicked, pos={270,40+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)}, value=" + num2str(sc_measAsync[i]) + " , title=\"\""
+		//execute(cmd)
+		cmd="SetVariable sc_rawScriptBox" + num2istr(i) + " pos={250, 37+sc_InnerBoxSpacing+i*(sc_InnerBoxH+sc_InnerBoxSpacing)}, size={410, 0}, fsize=14, title=\" \", value=sc_rawScripts[i]"
+		execute(cmd)
+		i+=1
+	while (i<numpnts( sc_RawWaveNames ))
+	i+=1
+	button addrowraw,pos={550,i*(sc_InnerBoxH + sc_InnerBoxSpacing)},size={110,20},proc=scw_addrow,title="Add Row"
+	button removerowraw,pos={430,i*(sc_InnerBoxH + sc_InnerBoxSpacing)},size={110,20},proc=scw_removerow,title="Remove Row"
+	checkbox sc_PrintRawBox, pos={300,i*(sc_InnerBoxH + sc_InnerBoxSpacing)}, proc=scw_CheckboxClicked, value=sc_PrintRaw,side=1,title="\Z14Print filenames"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 13,i*(sc_InnerBoxH + sc_InnerBoxSpacing)+50,"Wave Name"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 130,i*(sc_InnerBoxH + sc_InnerBoxSpacing)+50,"Record"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 200,i*(sc_InnerBoxH + sc_InnerBoxSpacing)+50,"Plot"	
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 320,i*(sc_InnerBoxH + sc_InnerBoxSpacing)+50,"Calc Script (ex: dmm[i]*1.5)"
+
+	i=0
+	do
+		DrawRect 9,85+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing),5+sc_InnerBoxW,85+sc_InnerBoxH+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing)
+		cmd="SetVariable sc_CalcWaveNameBox" + num2istr(i) + " pos={13, 92+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing)}, size={110, 0}, fsize=14, title=\" \", value=sc_CalcWaveNames[i]"
+		execute(cmd)
+		cmd="CheckBox sc_CalcRecordCheckBox" + num2istr(i) + ", proc=scw_CheckboxClicked, pos={150,95+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing)}, value=" + num2str(sc_CalcRecord[i]) + " , title=\"\""
+		execute(cmd)
+		cmd="CheckBox sc_CalcPlotCheckBox" + num2istr(i) + ", proc=scw_CheckboxClicked, pos={210,95+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing)}, value=" + num2str(sc_CalcPlot[i]) + " , title=\"\""
+		execute(cmd)
+		cmd="SetVariable sc_CalcScriptBox" + num2istr(i) + " pos={320, 92+sc_InnerBoxSpacing+(numpnts( sc_RawWaveNames )+i)*(sc_InnerBoxH+sc_InnerBoxSpacing)}, size={340, 0}, fsize=14, title=\" \", value=sc_CalcScripts[i]"
+		execute(cmd)
+		i+=1
+	while (i<numpnts( sc_CalcWaveNames ))
+	button addrowcalc,pos={550,89+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)},size={110,20},proc=scw_addrow,title="Add Row"
+	button removerowcalc,pos={430,89+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)},size={110,20},proc=scw_removerow,title="Remove Row"
+	checkbox sc_PrintCalcBox, pos={300,89+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)}, proc=scw_CheckboxClicked, value=sc_PrintCalc,side=1,title="\Z14Print filenames"
+
+	// box for instrument configuration
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 13,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)+20,"Connect Instrument"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 225,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)+20,"Open GUI"
+	SetDrawEnv fsize= 16,fstyle= 1
+	DrawText 440,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)+20,"Log Status"
+	ListBox sc_Instr,pos={9,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames))*(sc_InnerBoxH+sc_InnerBoxSpacing)+25},size={sc_InnerBoxW,(sc_InnerBoxH+sc_InnerBoxSpacing)*3},fsize=14,frame=2,listWave=root:sc_Instr,selWave=root:instrBoxAttr,mode=1, editStyle=1
+
+	// buttons
+	button connect, pos={10,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+30},size={120,20},proc=scw_OpenInstrButton,title="Connect Instr"
+	button gui, pos={140,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+30},size={120,20},proc=scw_OpenGUIButton,title="Open All GUI"
+	button killabout, pos={270,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+30},size={140,20},proc=sc_controlwindows,title="Kill Sweep Controls"
+	button killgraphs, pos={420,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+30},size={120,20},proc=scw_killgraphs,title="Close All Graphs"
+	button updatebutton, pos={550,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+30},size={110,20},proc=scw_updatewindow,title="Update"
+
+// helpful text
+	DrawText 13,120+(numpnts( sc_RawWaveNames ) + numpnts(sc_CalcWaveNames)+3)*(sc_InnerBoxH+sc_InnerBoxSpacing)+70,"Press Update to save changes."
+
+EndMacro
+
+
+//function/S scf_get_scanned_DACinfo(info_name, [column])
+//	// Return a list of strings for specified column in fadcattr based on whether "record" is ticked
+//	// Valid info_name ("calc_names", "raw_names", "calc_funcs", "inputs", "channels")
+//
+//	//column specifies whether another column of checkboxes need to be satisfied, There is
+//	// notch = 5, demod = 6, resample = 8,
+//	string info_name
+//	variable column
+//	variable i
+//	wave fdacattr
+//	wave/t dac_channel
+//
+//	string return_list = ""
+//	wave/t fadcvalstr
+//	for (i = 0; i<dimsize(fadcvalstr, 0); i++)
+//
+//		if (paramIsDefault(column))
+//
+//			if (fadcattr[i][2] == 48) // Checkbox checked
+//				strswitch(info_name)
+//					case "calc_names":
+//						return_list = addlistItem(fadcvalstr[i][3], return_list, ";", INF)
+//						break
+//					case "raw_names":
+//						return_list = addlistItem("ADC"+num2str(i), return_list, ";", INF)
+//						break
+//					case "calc_funcs":
+//						return_list = addlistItem(fadcvalstr[i][4], return_list, ";", INF)
+//						break
+//						//S.adcListIDs=scf_getRecordedFADCinfo("adcListIDs")
+//					case "adcListIDs":
+//						return_list = addlistItem(adc_channel[i], return_list, ";", INF)
+//						break
+//					case "inputs":
+//						return_list = addlistItem(fadcvalstr[i][1], return_list, ";", INF)
+//						break
+//					case "channels":
+//						return_list = addlistItem(fadcvalstr[i][0], return_list, ";", INF)
+//						break
+//					default:
+//						abort "bad name requested: " + info_name + ". Allowed are (calc_names, raw_names, calc_funcs, inputs, channels)"
+//						break
+//				endswitch
+//			endif
+//
+//		else
+//        
+//        	if (fadcattr[i][2] == 48 && fadcattr[i][column] == 48) // Checkbox checked
+//				strswitch(info_name)
+//					case "calc_names":
+//                		return_list = addlistItem(fadcvalstr[i][3], return_list, ";", INF)  												
+//						break
+//					case "raw_names":
+//                		return_list = addlistItem("ADC"+num2str(i), return_list, ";", INF)  						
+//						break
+//					case "calc_funcs":
+//                		return_list = addlistItem(fadcvalstr[i][4], return_list, ";", INF)  						
+//						break						
+//					case "inputs":
+//                		return_list = addlistItem(fadcvalstr[i][1], return_list, ";", INF)  												
+//						break						
+//					case "channels":
+//                		return_list = addlistItem(fadcvalstr[i][0], return_list, ";", INF)  																		
+//						break
+//					default:
+//						abort "bad name requested: " + info_name + ". Allowed are (calc_names, raw_names, calc_funcs, inputs, channels)"
+//						break
+//				endswitch			
+//        	endif
+//        	
+//        endif
+//        
+//    endfor
+//    return return_list
+//end
+
+
 
 ////////////////////////////////////////////
 /// Slow ScanController Recording Data /////
