@@ -24,6 +24,8 @@ function openFastDAC(portnum,[verbose])
 	string IDname="fd"
 
 	string http_address = "http://lcmi-docs.qdev-h101.lab:"+portnum+"/api/v1/"
+	//http_address="master.qdev-h101.lab:14441"
+
 
 
 	if(paramisdefault(verbose))
@@ -78,11 +80,11 @@ function init_dac_and_adc(fastdac_string)
 		dac_table[i][1] = temp_string
 		
 		// column 2
-		temp_string = "-1000,1000"
+		temp_string = "-10000,10000"
 		dac_table[i][2] = temp_string
 		
 		// column 3
-		temp_string = "1000"
+		temp_string = "10000"
 		dac_table[i][3] = temp_string
 		
 		
@@ -125,6 +127,7 @@ function init_dac_and_adc(fastdac_string)
 end
 
 
+
 function initFastDAC()
 // usage: init_dac_and_adc("1;2;4;6")
 //Edit/K=0 root:adc_table;Edit/K=0 root:dac_table
@@ -159,6 +162,18 @@ getFDIDs()
 		fdacvalstr[][2]=DAC_table[p][2]
 		fdacvalstr[][4]=DAC_table[p][3]
 	endif	
+	setadc_speed()
+end
+
+function setADC_speed()
+svar fd
+wave/t ADC_channel
+variable i=0
+do 
+set_one_fadcSpeed(i,82)
+//print get_one_fadcSpeed(i)
+i=i+1
+while(i<dimsize(ADC_channel,0))
 end
 
 
@@ -367,8 +382,8 @@ Function RampMultipleFDAC(string channels, variable setpoint, [variable ramprate
 
  
     
-    // If ramprate is not specified or not a number, default to 0 (indicating use of configured ramp rates)
-    ramprate = numtype(ramprate) == 0 ? ramprate : 0
+    // If ramprate is not specified or not a number, default to 1000 (this is mostly safe)
+    ramprate = numtype(ramprate) == 0 ? ramprate : 1000
 
     // Convert channel identifiers to numbers, supporting both numerical IDs and named channels
     channels = scu_getChannelNumbers(channels)
@@ -787,13 +802,17 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
 	
 	
 	// Additional intialization for fastDAC scans
+	string temp
 	S.sweeprate = sweeprate
 	S.duration = duration
    S.adcList = scf_getRecordedFADCinfo("channels")
    S.using_fastdac = 1
-   S.adcListIDs=scf_getRecordedFADCinfo("adcListIDs")
+   temp=scf_getRecordedFADCinfo("adcListIDs"); // this returns a ; separated string with an empty space at the end
+   temp=removeending(temp) // remove the empty space
+   S.adcListIDs=FormatListItems(temp) /// make coma separated array of strings
    S.adcLists=scf_getRecordedFADCinfo("raw_names")
    S.fakerecords="0"
+   S.lastread=-1
   
    
    S.raw_wave_names=scf_getRecordedFADCinfo("raw_names")
@@ -816,7 +835,8 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
    	// Sets starts/fins (either using starts/fins given or from single startx/finx given)
    // scv_setSetpoints(S, channelsx, startx, finx, channelsy, starty, finy, startxs, finxs, startys, finys) had to move this
 	
-	
+	   	get_dacListIDs(S)
+
 	scv_setSetpoints(S, channelsx, startx, finx, channelsy, starty, finy, startxs, finxs, startys, finys)
 	
 	// Set variables with some calculation
@@ -829,7 +849,7 @@ function initScanVarsFD(S, startx, finx, [channelsx, numptsx, sweeprate, duratio
    		S.channelsy = scu_getChannelNumbers(channelsy)				// converting from channel labels to numbers
 		S.y_label = scu_getDacLabel(S.channelsy)						// setting the y_label
    endif
-   	get_dacListIDs(S)
+   	//get_dacListIDs(S)
 
 scv_setLastScanVars(S)
 end
@@ -880,54 +900,136 @@ end
 //// API functions ////
 ///////////////////////
 
+/// http://lcmi-docs.qdev-h101.lab:14441/swagger/
 
-//function set_one_fadcSpeed(int adcValue,variable speed)
-//	svar fd
-//	String cmd = "set-convert-time"
-//	// Convert variables to strings and construct the JSON payload dynamically
-//	String payload
-//	payload = "{\"adc\": " + num2str(adcValue) + ", \"duration_us\": " + num2str(speed) + "}"
-//	String headers = "accept: application/json\nContent-Type: application/json"
-//	// Perform the HTTP PUT request
-//	String response = putHTTP(instrID, cmd, payload, headers)
-//	print response
-//end
-//
-//
-//function get_one_fadcSpeed(int adcValue)
-//	svar fd
-//	string	response=getHTTP(fd,"read-convert-time/"+num2str(adcValue),"");
-//	string value
-//	value=getjsonvalue(response,"durationUs")
-//	variable speed = roundNum(1.0/str2num(value)*1.0e6,0)
-//	return speed
-//end
-//
-//function get_one_FADCChannel(int channel) // Units: mV
-//	svar fd
-//	string	response=getHTTP(fd,"get-adc/"+num2str(channel),"");print response
-//	string adc
-//	adc=getjsonvalue(response,"value")
-//	return str2num(adc)
-//end
-//
-//function get_one_FDACChannel(int channel) // Units: mV
-//	svar fd
-//	string	response=getHTTP(fd,"get-dac/"+num2str(channel),"");
-//	string adc
-//	adc=getjsonvalue(response,"value")
-//	return str2num(adc)
-//end
+function set_one_fadcSpeed(int adcValue,variable speed)
+	svar fd
+	wave/t ADC_channel
+	String cmd = "set-adc-sampling-time"
+	// Convert variables to strings and construct the JSON payload dynamically
+	String payload
+	payload = "{\"access_token\": \"string\", \"fqpn\": \"" + ADC_channel(adcValue) + "\", \"sampling_time_us\": " + num2str(speed) + "}"
+	//print payload
+	String headers = "accept: application/json\nContent-Type: application/json"
+	// Perform the HTTP PUT request
+	String response = postHTTP(fd, cmd, payload, headers)
+end
 
-//function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
-//	svar fd
-//	String cmd = "smart-ramp-sync"
-//	String payload
-//	payload = "{\"dac\": " + num2str(channel) + ", \"setpoint_mv\": " + num2str(setpoint)+ ", \"rate_mv_s\": " + num2str(ramprate) + "}"
-//	String headers = "accept: application/json\nContent-Type: application/json"
-//	String response = postHTTP(fd, cmd, payload, headers)
-//	print response
-//end
+function get_one_fadcSpeed(int adcValue)
+	svar fd
+	wave/t ADC_channel
+	string	response=getHTTP(fd,"get-adc-sampling-time/"+ADC_channel(adcValue),"");
+	string value
+	value=getjsonvalue(response,"sampling_time_us")
+	variable speed = roundNum(1.0/str2num(value)*1.0e6,0)
+	return speed
+end
+
+function get_one_FADCChannel(int channel) // Units: mV
+	svar fd
+	wave/t ADC_channel	 
+	string	response=getHTTP(fd,"get-adc-voltage/"+ADC_channel(channel),"");//print response
+	string adc
+	adc=getjsonvalue(response,"value")
+	return str2num(adc)
+end
+
+function get_one_FDACChannel(int channel) // Units: mV
+	svar fd
+	wave/t DAC_channel
+	string	response=getHTTP(fd,"get-dac-voltage/"+DAC_channel(channel),"");
+	string adc
+	adc=getjsonvalue(response,"value")
+	return str2num(adc)
+end
+
+function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
+	wave/t DAC_channel
+	svar fd
+	String cmd = "ramp-dac-to-target"
+	String payload
+	payload = "{\"fqpn\": \"" + Dac_channel(channel) + "\", \"ramp_rate_mv_per_s\": " + num2str(ramprate) + ", \"target\": {\"unit\": \"mV\", \"value\": " + num2str(setpoint) + "}}"
+	String headers = "accept: application/json\nContent-Type: application/json"
+	String response = postHTTP(fd, cmd, payload, headers)
+	print headers
+	print response
+	
+end
+
+function sample_ADC(string adclist, variable nr_samples)
+	svar fd
+	variable chunksize=1200
+	String cmd = "run-samples-acquisition"
+	String payload=""
+	payload+= "{\"adc_list\": ["
+	payload+=adclist
+	payload+=  "], "
+    payload+= "\"chunk_max_samples\": \"" + num2str(chunksize) + "\", "
+    payload+= "\"adc_sampling_time_us\": \"" + num2str(82) + "\", "
+    payload+= "\"chunk_file_name_template\": \"temp_{{.ChunkIndex}}.dat\", "
+   	payload+=  "\"nr_samples\": \"" + num2str(nr_samples) + "\"}"
+
+//print payload
+	String headers = "accept: application/json\nContent-Type: application/json"
+	String response = postHTTP(fd, cmd, payload, headers)
+	//print response
+end
+
+
+
+
+Function linear_ramp(S)
+    Struct ScanVars &S
+    String adcList = S.adcListIDs 
+    Variable nr_samples = S.numptsx
+    Variable i
+    SVar fd
+    Variable chunkSize = 1200
+    String cmd = "start-linear-ramps"
+    String payload = "{\"adc_list\": [" + adcList + "], "
+    payload += "\"chunk_max_samples\": \"" + num2str(chunkSize) + "\", "
+    payload += "\"adc_sampling_time_us\":" + num2str(82) + ", "
+    payload += "\"chunk_file_name_template\": \"temp_{{.ChunkIndex}}.dat\", "
+    payload += "\"nr_steps\": \"" + num2str(nr_samples) + "\","
+    payload += "\"dac_range_map\": {"
+
+    for (i = 0; i < ItemsInList(S.daclistIDs,","); i += 1)
+        if (i > 0)
+            payload += ", "
+        endif
+        payload += CreatePayload(S, i)
+    endfor
+
+    payload += "}}"
+    print payload
+
+    String headers = "accept: application/json\nContent-Type: application/json"
+    String response = postHTTP(fd, cmd, payload, headers)
+    print response
+End
+
+Function/S CreatePayload(S, idx)
+    Struct ScanVars &S
+    Int idx
+    String dacChannel = StringFromList(idx, S.daclistIDs, ",")
+    String minValue = StringFromList(idx, S.startXs, ",")
+    String maxValue = StringFromList(idx, S.finXs, ",")
+
+    // Construct the payload for one DAC entry
+    String payload = "\"" + dacChannel + "\": {"
+    payload += "\"max\": {\"unit\": \"mV\", \"value\": " + maxValue + "}, "
+    payload += "\"min\": {\"unit\": \"mV\", \"value\": " + minValue + "}"
+    payload += "}"
+    return payload
+End
+
+
+
+
+
+
+
+
 
 
 function fd_stopFDACsweep()
@@ -947,34 +1049,20 @@ end
 
 
 
+//function get_one_FADCChannel(int channel) // Units: mV
+//variable speed=gnoise(1)
+//return speed
+//end
 
+//function get_one_FDACChannel(int channel) // Units: mV
+//variable speed=channel+gnoise(1)
+//return speed
+//end
 
-
-function set_one_fadcSpeed(int adcValue,variable speed)
-speed=gnoise(1)
-return speed
-end
-
-
-function get_one_fadcSpeed(int adcValue)
-variable speed=gnoise(1)
-return speed
-end
-
-function get_one_FADCChannel(int channel) // Units: mV
-variable speed=gnoise(1)
-return speed
-end
-
-function get_one_FDACChannel(int channel) // Units: mV
-variable speed=channel+gnoise(1)
-return speed
-end
-
-function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
-variable speed=gnoise(1)
-return speed
-end
+//function set_one_FDACChannel(int channel, variable setpoint, variable ramprate)
+//variable speed=gnoise(1)
+//return speed
+//end
 
 ///////////////////////
 //// PID functions ////

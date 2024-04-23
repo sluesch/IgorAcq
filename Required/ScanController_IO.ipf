@@ -2011,6 +2011,39 @@ function/S removeSeperator(str, sep)
 
 end 
 
+Function/S FormatListItems(listString)
+    String listString
+    Variable i, numItems
+    String result, currentItem
+
+
+    // Split and process each item
+    numItems = ItemsInList(listString, ";")
+    result = ""  // Initialize the result string
+
+    for(i = 0; i < numItems; i += 1)
+        currentItem = StringFromList(i, listString)
+        //print currentItem
+        if(strlen(currentItem) > 0)
+            if(strlen(result) > 0)
+                result += ","  // Add comma before adding the next item
+            endif
+            result += "\"" + TrimString(currentItem) + "\""  // Add quotes and handle any space trimming
+        endif
+    endfor
+
+    return result
+End
+
+
+//Function/S TrimString(str)
+//    String str
+//    // Trim leading and trailing white spaces
+//    return RemoveEnding(str, " ")
+//End
+
+
+
 function/S removeTrailingWhitespace(str)
     String str
 

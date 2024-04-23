@@ -250,6 +250,7 @@ function scfw_update_all_fdac([option])
 	wave/t fdacvalstr
 	wave/t old_fdacvalstr
 	wave/t DAC_channel
+	variable ramprate
 
 	if (paramisdefault(option))
 		option = "fdacramp"
@@ -266,13 +267,15 @@ function scfw_update_all_fdac([option])
 						for(j=0;j<numDACCh;j+=1)
 							output = str2num(fdacvalstr[j][1])
 							if(output != str2num(old_fdacvalstr[j]))
-								rampmultipleFDAC(num2str(j), output)
+							ramprate=str2num(fdacvalstr[j][4])
+								rampmultipleFDAC(num2str(j), output,ramprate=ramprate)
 							endif
 						endfor
 						break
 					case "fdacrampzero":
 						for(j=0;j<numDACCh;j+=1)
-							rampmultipleFDAC(num2str(j), 0)
+						ramprate=str2num(fdacvalstr[j][4])
+							rampmultipleFDAC(num2str(j), 0,ramprate=ramprate)
 						endfor
 					break
 
@@ -503,6 +506,8 @@ function initScanVars(S, [instrIDx, startx, finx, channelsx, numptsx, delayx, ra
 	 string startxs, finxs, startys, finys
 	 string interlaced_channels, interlaced_setpoints
     string comments
+        nvar filenum
+
     
 	// Handle Optional Strings
 	x_label = selectString(paramIsDefault(x_label), x_label, "")
@@ -586,14 +591,14 @@ function initScanVars(S, [instrIDx, startx, finx, channelsx, numptsx, delayx, ra
 	// Backend use
 	S.direction = 1   // For keeping track of scan direction when using alternating scan
 	S.never_save = 0  // Set to 1 to make sure these ScanVars are never saved (e.g. if using to get throw away values for getting an ADC reading)
-	S.filenum = 0
+	S.filenum = filenum
 end
 
 function get_dacListIDs(S)
 
 	struct ScanVars &S
 	string  new_channels
-	
+
 	// working out DACLIstIDs for x channels
 	new_channels=scu_getChannelNumbers(S.channelsx) /// this returns a string with x DAC channels
 	wave numericwave
@@ -607,22 +612,22 @@ function get_dacListIDs(S)
 		returnlist=returnlist+dac_channel[numericwave[i]]+","
 	endfor
 	S.dacListIDs=returnlist;
-	
+
 	// working out DACLIstIDs for y channels
 	new_channels=scu_getChannelNumbers(S.channelsy) /// this returns a string with x DAC channels
 	S.dacListIDs_y=S.channelsy
-	 returnlist=""
-	 if((S.is2d==1)&& (strlen(S.dacListIDs_y)>1))
-	 	StringToListWave(S.dacListIDs_y)
+	returnlist=""
+	if((S.is2d==1)&& (strlen(S.dacListIDs_y)>1))
+		StringToListWave(S.dacListIDs_y)
 
-	for (i = 0; i<dimsize(numericwave, 0); i=i+1)
-		returnlist=returnlist+dac_channel[numericwave[i]]+","
-	endfor
-	S.dacListIDs_y=returnlist;
+		for (i = 0; i<dimsize(numericwave, 0); i=i+1)
+			returnlist=returnlist+dac_channel[numericwave[i]]+","
+		endfor
+		S.dacListIDs_y=returnlist;
 	endif
-	
-	
-	
+
+
+
 end
 
 
@@ -1884,7 +1889,7 @@ function scfd_resampleWaves(w, measureFreq, targetFreq)
 
 
 	RatioFromNumber (targetFreq / measureFreq)
-	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=1 w
+	resample /UP=(V_numerator) /DOWN=(V_denominator) /N=201 /E=0 w
 
 //	print "Num and den are",v_numerator, v_denominator
 	if (V_numerator > V_denominator)
@@ -2099,13 +2104,13 @@ function scfd_RecordValues(S, rowNum, [AWG_list, linestart, skip_data_distributi
 
 	// If beginning of scan, record start time
 	if (rowNum == 0 && (S.start_time == 0 || numtype(S.start_time) != 0))  
-		S.start_time = datetime 
+		S.start_time = datetime-date2secs(2024,04,22) 
 	endif
 	
 	// Send command and read values
 	//print "sending command and reading"
 	scfd_SendCommandAndRead(S, AWG, rowNum, skip_raw2calc=skip_raw2calc) 
-	S.end_time = datetime  // this did not work on a MAC but I am not going to change it until I confirm it also does not work on a PC
+	S.end_time = datetime-date2secs(2024,04,22) // this did not work on a MAC but I am not going to change it until I confirm it also does not work on a PC
 	
 	// Process 1D read and distribute
 	if (!skip_data_distribution)
@@ -2126,54 +2131,54 @@ function scfd_checkRawSave()
 end
 
 Function scfd_SendCommandAndRead(S,AWG_list,rowNum, [ skip_raw2calc])
-    // Sends a command for a 1D sweep to FastDAC and records the raw data returned.
-    // Optionally skips processing raw data into calculated waves based on skip_raw2calc flag.
-    //
-    // Parameters:
-    // S: Reference to the ScanVars structure containing scanning parameters.
-    // AWG_list: Reference to the AWGVars structure containing AWG configuration.
-    // rowNum: The row number being processed.
-    // skip_raw2calc: Optional flag to skip the conversion of raw waves to calculated waves.
-    
-    Struct ScanVars &S
-    Struct AWGVars &AWG_list
-    Variable rowNum
-    Variable skip_raw2calc  // Optional flag to skip processing of raw data
-    String cmd_sent  // Command sent to FastDAC (currently not used but initialized)
-    Variable numpnts_read  // Number of points read in the current operation
-    variable done = 0 // boolean to check whether all the data from a scan has been uploaded
-    
-    // Default skip_raw2calc to 0 if not provided
-    If (ParamIsDefault(skip_raw2calc))
-        skip_raw2calc = 0
-    EndIf
-    
-    // Verify that necessary parameters are set before proceeding
-    If (S.samplingFreq == 0 || S.numADCs == 0 || S.numptsx == 0)
-        Abort "ERROR[scfd_SendCommandAndRead]: Not enough info in ScanVars to run scan"
-    EndIf
-    
-    // Start the sweep
-    fd_start_sweep(S, AWG_list = AWG_list)
-    S.lastread = -1  // Reset the last read index
-    
-    //need to reinitialize the raw ADC waves otherwise loadfiles will be confused. If this is not a desired way to handle this,
-    //we will need to add a counter to loadfiles to keep track on how many pnts have already been read
-    scfd_resetraw_waves()
-    // Loop to read data until the expected number of points is reached
-    Do
-        //print "running loadfiles"
-        done = loadfiles(S)  // Load data from files
-        scfd_raw2CalcQuickDistribute(0)  // 0 or 1 for if data should be displayed decimated or not during the scan
-    	scfd_checkSweepstate()
-    	doupdate
-        // Short pause to allow for data acquisition
-    While (!done)  // Continue if not all points are read
-    
-    // Update FastDAC and ADC GUI elements
-    scfw_update_all_fdac(option="updatefdac")
-    scfw_update_fadc("")  // Update FADC display with no additional specification
-    
+	// Sends a command for a 1D sweep to FastDAC and records the raw data returned.
+	// Optionally skips processing raw data into calculated waves based on skip_raw2calc flag.
+	//
+	// Parameters:
+	// S: Reference to the ScanVars structure containing scanning parameters.
+	// AWG_list: Reference to the AWGVars structure containing AWG configuration.
+	// rowNum: The row number being processed.
+	// skip_raw2calc: Optional flag to skip the conversion of raw waves to calculated waves.
+
+	Struct ScanVars &S
+	Struct AWGVars &AWG_list
+	Variable rowNum
+	Variable skip_raw2calc  // Optional flag to skip processing of raw data
+	String cmd_sent  // Command sent to FastDAC (currently not used but initialized)
+	Variable numpnts_read=0  // Number of points read in the current operation
+
+	// Default skip_raw2calc to 0 if not provided
+	If (ParamIsDefault(skip_raw2calc))
+		skip_raw2calc = 0
+	EndIf
+
+	// Verify that necessary parameters are set before proceeding
+	If (S.samplingFreq == 0 || S.numADCs == 0 || S.numptsx == 0)
+		Abort "ERROR[scfd_SendCommandAndRead]: Not enough info in ScanVars to run scan"
+	EndIf
+
+	// Start the sweep
+	fd_start_sweep(S, AWG_list = AWG_list)
+	S.lastread = -1  // Reset the last read index
+
+	//need to reinitialize the raw ADC waves otherwise loadfiles will be confused. If this is not a desired way to handle this,
+	//we will need to add a counter to loadfiles to keep track on how many pnts have already been read
+	scfd_resetraw_waves()
+	// Loop to read data until the expected number of points is reached
+	Do
+		////                sleep/s 0.1// Short pause to allow for data acquisition
+
+		numpnts_read = loadfiles(S,numpnts_read)  // Load data from files
+		scfd_raw2CalcQuickDistribute(0)  // 0 or 1 for if data should be displayed decimated or not during the scan
+		scfd_checkSweepstate()
+		doupdate
+
+	While (numpnts_read<S.numptsx)  // Continue if not all points are read
+
+	// Update FastDAC and ADC GUI elements
+	scfw_update_all_fdac(option="updatefdac")
+	scfw_update_fadc("")  // Update FADC display with no additional specification
+
 
 
 	//	if(AWG_list.use_awg == 1)  // Reset AWs back to zero (no reason to leave at end of AW)
@@ -2207,63 +2212,64 @@ end
 //	CtrlNamedBackground Test, stop
 //End
 
-function loadfiles(S)
-	// adcnames is the SEMI-colon-separated list of wavenames into which the columns will be loaded.
-	// The following must exist before loadfiles is run:
-	// - The waves in adcnames into which the data will be loaded--and must have the right length to accomodate all arriving data
-	// - The path fdtest of the folder that contains files to be loaded
-	// - The variable lastread containing the number of the last file that was loaded
-	  struct ScanVars &S
-	  string adcnames=S.adcLists;
-	variable timer=startmsTimer //this timer, stored under the label "timer", is just for diagnostic purposes
-	string filelist = indexedfile(fdtest,-1,".dat") //list of filenames with .txt extension that are currently existing in the path fdtest
-	string currentfile, teststring
-	variable numpnts_read
-	variable lastread // the last file that was loaded
-	lastread=S.lastread
-	variable numfiles = itemsinlist(filelist) // number of files in fdtest that have .txt extension
-	variable i=0, initpts, addpts, totpts
-	variable numadcs = itemsinlist(adcnames) // number of adc columns to be read in
-	variable adc=0
-	variable done=0 // boolean testing whether adc waves are filled with data or there is more to come
-	variable lastfile=0 // a boolean testing whether the most recent file in fdtest has already been read into Igor
-	
+
+Function loadFiles(S, numPntsRead)
+	struct ScanVars &S
+	variable numPntsRead    // Loads files based on a specified pattern and updates data waves.
+	// Pre-conditions:
+	// - 'adcNames' contains a semicolon-separated list of wave names for loading data.
+	// - The folder path 'fdTest' must contain files to be loaded.
+	// - 'lastRead' variable must hold the index of the last file that was loaded.
+
+	String adcNames = S.adcLists
+	String fileList = IndexedFile(fdTest, -1, ".dat") // List all .dat files in fdTest
+	String currentFile, testString
+	Variable lastRead = S.lastRead // Initialize with the last file index loaded from structure S
+	Variable numFiles = ItemsInList(fileList)
+	Variable numAdcs = ItemsInList(adcNames) // Number of ADC columns to read in
+	Variable i, initPts, addPts, totPts
+	Variable adc, lastfile
+
 	do
 		lastfile=1 // assumes that the most recent file has already been read in until proven otherwise
-		for(i=0;i<numfiles;i++) // loops through all .txt files in fdtest with index i.  This loop will break when the file after lastread is found
-			currentfile = StringFromList(i,filelist) // We are considering the i'th .txt file in fdtest.  Currentfile is the name of that file
-			teststring = "*_" + num2str(lastread+1) + ".dat" // that is is what the name of the next file to be read in will look like.  We assume the name is anything (*) then (_) then (the next integer after lastread) then .txt
 
-			if (stringmatch(currentfile, teststring)) // If the name of the i'th file matches teststring, then
-				lastread += 1 // we will reading this file in so increment the global counter of the last file read
-				LoadWave/q/O/G/D/A/N=tempwave/P=fdtest currentfile // load columns into wavenames starting with "tempwave0" and incrementing by one.  Overwrites existing tempwaves.
-				for(adc=0;adc<numadcs;adc++) // loops through the adcs we are expecting to read.  Might want to implement a check that the number of columns in the file is the same as the number we are expecting to read
-					wave oneadc=$(stringfromlist(adc,adcnames)) // declares oneadc to be the adcwave we want to concatenate data into
-					wave data2add=$("tempwave"+num2str(adc)) // declares data2add to be the adc'th copy of tempwave
-					wavestats /q oneadc
-					initpts=v_npnts
-					totpts = (v_npnts+v_numnans)
-					wavestats /q data2add
-					addpts=v_npnts
-					//print "filling points from",initpts,"to",(initpts+addpts-1)
-					// concatenate/NP=0 {data2add}, oneadc //concatenates data2add onto oneadc
-					oneadc[(initpts),(initpts+addpts-1)]=data2add[p-initpts]
-					if(totpts<=(initpts+addpts))
-						done=1
-					endif
-					doupdate
-				endfor
+		for (i = 0; i < numFiles; i += 1)
+			currentFile = StringFromList(i, fileList)
+			testString = "*_" + num2str(lastRead + 1) + ".dat" // Pattern of the next file to read
+
+			if (StringMatch(currentFile, testString))
+				lastRead += 1 // Increment the index as we are processing this file
+				//print currentFile
+				LoadWave/Q/O/G/D/A/N=tempWave/P=fdTest currentFile // Load data into temporary waves
+
+				for (adc = 0; adc < numAdcs; adc += 1)
+					Wave oneAdc = $StringFromList(adc, adcNames) // Target wave for data
+					Wave dataToAdd = $("tempWave" + num2str(adc+1)) // Source wave for data
+
+					WaveStats/Q oneAdc
+					initPts = V_npnts
+					totPts = (V_npnts + V_numNans)
+					WaveStats/Q dataToAdd
+					addPts = V_npnts
+
+					oneAdc[initPts, (initPts + addPts - 1)] = dataToAdd[p - initPts] // Copy data
+				EndFor
 				lastfile=0 // we just read in a new file so perhaps the most recent file has not been read in
-				DeleteFile /P=fdtest  /Z=1 currentfile
-				break // break out of the i<numfiles for-loop since we just read in the next file.  We need to start from the top to look for the next-next file.
-			endif
+
+				DeleteFile/P=fdTest/Z=1 currentFile // Delete the file after processing
+				S.lastRead = lastRead // Update the lastRead index in the structure
+				numPntsRead += DimSize($"tempWave0", 0) // Update the total number of points read
+				//print numPntsRead
+				break // Exit the loop after processing the matching file
+			EndIf
 		endfor // if we got all the way through the i<numfiles for-loop without ever finding a filename that matches teststring (the next file) then we must have read the latest one
+
+
 	while(!lastfile)
-	numpnts_read=dimsize(oneadc,0)
-	//print stopMSTimer(timer)
-	//print numpnts_read
-	return done
-end
+
+	return numPntsRead
+End
+
 
 
 
@@ -2714,11 +2720,11 @@ function EndScan([S, save_experiment, aborting, additional_wavenames])
 	scv_getLastScanVars(S_)
 
 	if (aborting)
-		S_.end_time = datetime
+		S_.end_time = datetime-date2secs(2024,04,22) 
 		S_.comments = "aborted, " + S_.comments
 	endif
 	if (S_.end_time == 0 || numtype(S_.end_time) != 0) // Should have already been set, but if not, this is likely a good guess and prevents a stupid number being saved
-		S_.end_time = datetime
+		S_.end_time = datetime-date2secs(2024,04,22) 
 		S_.comments = "end_time guessed, "+S_.comments
 	endif
 	
@@ -2735,10 +2741,10 @@ function EndScan([S, save_experiment, aborting, additional_wavenames])
 	SaveToHDF(S_, additional_wavenames=additional_wavenames)
 
 	nvar sc_save_time
-	if(save_experiment==1 && (datetime-sc_save_time)>180.0)
+	if(save_experiment==1 && (datetime-date2secs(2024,04,22) -sc_save_time)>180.0)
 		// save if save_exp=1 and if more than 3 minutes has elapsed since previous saveExp
 		saveExp()
-		sc_save_time = datetime
+		sc_save_time = datetime-date2secs(2024,04,22) 
 	endif
 
 //	if(sc_checkBackup())  	// check if a path is defined to backup data
@@ -2900,7 +2906,7 @@ function RecordValues(S, i, j, [fillnan])
 
 	// Set Scan start_time on first measurement if not already set
 	if (i == 0 && j == 0 && (S.start_time == 0 || numtype(S.start_time) != 0))
-		S.start_time = datetime
+		S.start_time = datetime-date2secs(2024,04,22) 
 	endif
 
 	// Figure out which way to index waves
@@ -2941,8 +2947,8 @@ function RecordValues(S, i, j, [fillnan])
 				redimension /n=(innerindex+1) wref1d
 				S.numptsx = innerindex+1  // So that x_array etc will be saved correctly later
 				wref1d[innerindex] = NaN  // Prevents graph updating with a zero
-				setscale/I x 0,  datetime - S.start_time, wref1d
-				S.finx = datetime - S.start_time 	// So that x_array etc will be saved correctly later
+				setscale/I x 0,  datetime-date2secs(2024,04,22)  - S.start_time, wref1d
+				S.finx = datetime-date2secs(2024,04,22)  - S.start_time 	// So that x_array etc will be saved correctly later
 				scv_setLastScanVars(S)
 			endif
 
@@ -2978,7 +2984,7 @@ function RecordValues(S, i, j, [fillnan])
 			// Redimension waves if readvstimeis set to 1
 			if (S.readvstime == 1)
 				redimension /n=(innerindex+1) wref1d
-				setscale/I x 0, datetime - S.start_time, wref1d
+				setscale/I x 0, datetime-date2secs(2024,04,22)  - S.start_time, wref1d
 			endif
 
 			if(!fillnan)
@@ -3003,7 +3009,7 @@ function RecordValues(S, i, j, [fillnan])
 		ii+=1
 	while (ii < numpnts(sc_CalcWaveNames))
 
-	S.end_time = datetime // Updates each loop
+	S.end_time = datetime-date2secs(2024,04,22) // Updates each loop
 
 	// check abort/pause status
 	nvar sc_abortsweep, sc_pause, sc_scanstarttime
