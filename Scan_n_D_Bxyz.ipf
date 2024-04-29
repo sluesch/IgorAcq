@@ -159,6 +159,14 @@ function setK2400s_alongConstn(instrIDs, numpts, DDest)
 	string fins=num2str(VtopDest)+","+num2str(VbtmDest)
 	
 	
+	if (abs(VtopDest) >= 11000)
+	return -1
+	endif 
+	
+	if (abs(VbtmDest) >= 11000)
+	return -1
+	endif 
+	
 	variable i=1
 	do
 	setMultipleK2400s(instrIDs,i,numpts,starts,fins, 0.03)
@@ -194,7 +202,7 @@ function rampK2400s_alongConstD(instrIDs, numpts, nDest)
 end
 
 
-function setK2400s_alongConstD(instrIDs, numpts, nDest)
+function set_n_alongConstD(instrIDs, numpts, nDest)
 	//Ramp top and bottom Keithley together, along a constant D line
 	//In the middle of the ramping, (Vt,Vb) also lie on the constant D line, rather than first ramp Vt to a point with different D, and then ramp Vb back to const D line
 	//Of course, it is impossible to make Vt and Vb ramping really simultaneously
@@ -208,6 +216,14 @@ function setK2400s_alongConstD(instrIDs, numpts, nDest)
 	
 	variable VtopDest=ConvertnDToVt(nDest,ConstD)
 	variable VbtmDest=ConvertnDToVb(nDest,ConstD)
+	
+	if (abs(VtopDest) >= 12000)
+	return -1
+	endif 
+	
+	if (abs(VbtmDest) >= 12000)
+	return -1
+	endif 
 	
 	string starts=num2str(VtopNow)+","+num2str(VbtmNow)
 	string fins=num2str(VtopDest)+","+num2str(VbtmDest)
@@ -375,10 +391,10 @@ end
 
 
 
-function Scan_n(instrIDx,instrIDy,fixedD,startn,finn,numptsn,delayn,rampraten, [y_label, comments, nosave]) //Units: mV
+function Scan_n(instrIDx,instrIDy,fixedD,startn,finn,numptsn,delayn,rampraten,[start_delay, y_label, comments, nosave]) //Units: mV
 
 
-	variable instrIDx,instrIDy,fixedD,startn,finn,numptsn,delayn,rampraten,nosave
+	variable instrIDx,instrIDy,fixedD,startn,finn,numptsn,delayn,rampraten,nosave, start_delay
 	//variable instrIDx, startx, finx, numpts, delay, rampratebothxy, instrIDy, starty, finy, nosave
 	string y_label, comments
 	
@@ -413,9 +429,12 @@ function Scan_n(instrIDx,instrIDy,fixedD,startn,finn,numptsn,delayn,rampraten, [
 	// Ramp to start without checks because checked above
 	rampK2400Voltage(S.instrIDx, ConvertnDToVt(startn,fixedD))
 	rampK2400Voltage(S.instrIDy, S.starty)
-	
-	// Let gates settle 
-	sc_sleep(4)
+	if (start_delay == 0)
+		// Let gates settle 
+		sc_sleep(5)
+	else 
+		sc_sleep(start_delay)
+	endif
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -580,7 +599,7 @@ function Scan_D(instrIDx,instrIDy,fixedn,startD,finD,numptsD,delayD,ramprateD, [
 	rampK2400Voltage(S.instrIDy, S.starty, ramprate=ramprateD)	
 	
 	// Let gates settle 
-	sc_sleep(S.delayy*5)
+	sc_sleep(4)
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -612,7 +631,6 @@ function ScanFastDacSlowAND2K2400n2D(instrIDx, startx, finx, channelsx, numptsx,
 	
 	variable keithleyIDtop,keithleyIDbtm, fixedD, startn, finn, numptsn, delayn, rampraten, instrIDx, startx, finx, numptsx, delayx, rampratex,nosave
 	string channelsx, y_label, comments
-//	abort "WARNING: This scan has not been tested with an instrument connected. Remove this abort and test the behavior of the scan before running on a device!"
 
 	variable Vtgn=B_tn()
 	variable VtgD=B_tD() 
@@ -649,8 +667,6 @@ function ScanFastDacSlowAND2K2400n2D(instrIDx, startx, finx, channelsx, numptsx,
 	// Ramp to start without checks because checked above
 	rampMultipleFDAC(instrIDx, channelsx, startx, ramprate=rampratex, ignore_lims=1)
 	
-	setK2400s_alongConstD("k2400t,k2400b", 701, startn);
-	
 	// Ramp to start without checks because checked above
 	rampK2400Voltage(keithleyIDtop, startTop, ramprate=rampraten)
 	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=rampraten)
@@ -673,22 +689,14 @@ function ScanFastDacSlowAND2K2400n2D(instrIDx, startx, finx, channelsx, numptsx,
 		setpointTop=convertnDToVt(setpointn, setpointD)
 		setpointBtm=convertnDToVb(setpointn, setpointD)
 		
-		setK2400s_alongConstD("k2400t,k2400b", 601, setpointn);
-
+		rampMultipleFDAC(instrIDx, channelsx, setpointfd, ramprate=rampratex, ignore_lims=1)
 		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
 		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=rampraten)
-		rampMultipleFDAC(instrIDx, channelsx, setpointfd, ramprate=rampratex, ignore_lims=1)
-		
 		sc_sleep(S.delayy)
 		j=0
 		do
-//			setpointn = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
-//			setpointTop=convertnDToVt(setpointn, setpointD)
-//			setpointBtm=convertnDToVb(setpointn, setpointD)
+
 			setpointfd = S.startx + (j*(S.finx-S.startx)/(S.numptsx-1))
-			
-//			setK2400Voltage(keithleyIDtop, setpointTop)
-//			setK2400Voltage(keithleyIDbtm, setpointBtm)
 			rampMultipleFDAC(instrIDx, channelsx, setpointfd, ramprate=rampratex, ignore_lims=1)
 			sc_sleep(S.delayx)
 			RecordValues(S, i, j)
@@ -750,7 +758,7 @@ function ScanFastDacSlowAND2K2400D2D(instrIDx, startx, finx, channelsx, numptsx,
 	// Ramp to start without checks because checked above
 	rampMultipleFDAC(instrIDx, channelsx, startx, ramprate=rampratex, ignore_lims=1)
 	
-	setK2400s_alongConstn("k2400t,k2400b", 601, startD)
+//	setK2400s_alongConstn("k2400t,k2400b", 601, startD)
 	
 	
 	// Ramp to start without checks because checked above
@@ -759,7 +767,7 @@ function ScanFastDacSlowAND2K2400D2D(instrIDx, startx, finx, channelsx, numptsx,
 	
 	
 	// Let gates settle 
-	sc_sleep(S.delayy*1.5)
+	sc_sleep(S.delayy)
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -770,9 +778,9 @@ function ScanFastDacSlowAND2K2400D2D(instrIDx, startx, finx, channelsx, numptsx,
 		setpointn = fixedn
 		setpointD =  S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
 		setpointfd = S.startx
-		
-		setK2400s_alongConstn("k2400t,k2400b", 701, setpointD)
-		
+//		
+//		setK2400s_alongConstn("k2400t,k2400b", 701, setpointD)
+//		
 		setpointTop=convertnDToVt(setpointn, setpointD)
 		setpointBtm=convertnDToVb(setpointn, setpointD)
 		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=ramprateD)
@@ -899,9 +907,294 @@ function Scan2K2400nANDFastDacSlow2D(keithleyIDtop,keithleyIDbtm,fixedD, startn,
 end
 
 
+
+function Scan2K2400nANDk24002D(keithleyIDtop,keithleyIDbtm,fixedD, startn, finn, numptsn, delayn, rampraten, instrIDy, starty, finy, numptsy, delayy, rampratey, [ y_label, comments, nosave]) //Units: mV
+	
+	variable keithleyIDtop,keithleyIDbtm, fixedD, startn, finn, numptsn, delayn, rampraten, instrIDy, starty, finy, numptsy, delayy, rampratey,nosave
+	string  y_label, comments
+	
+	variable Vtgn=B_tn()
+	variable VtgD=B_tD() 
+	variable Vbgn=B_bn()
+	variable VbgD=B_bD()
+	
+	//Convert the input-from-keyboard start/finish carrier density n and fixed D to start/finish V_top/V_btm 
+	//variable startTop,startBtm,FinTop,FinBtm
+	variable startTop=convertnDToVt(startn, fixedD)
+	variable startBtm=convertnDToVb(startn, fixedD)
+	variable finTop=convertnDToVt(finn, fixedD)
+	variable finBtm=convertnDToVb(finn, fixedD)
+	
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "") 
+	y_label = selectstring(paramisdefault(y_label), y_label, "fd (mV)")
+
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=keithleyIDtop, startx=startn, finx=finn, numptsx=numptsn, delayx=delayn, rampratex=rampraten, \
+							instrIDy=keithleyIDbtm, starty=starty, finy=finy, numptsy=numptsy, delayy=delayy, rampratey=rampratey, \
+	 						y_label=y_label, comments=comments)
+	 						
+	
+	// Check limits (not as much to check when using FastDAC slow)
+	scc_checkLimsFD(S)
+	S.lims_checked = 1
+	
+	//Security Check of using 'setK2400Voltage' instead of 'ramp'
+	variable KeithleyStepThreshold=40   //Never use 'setK2400Voltage' to make a gate voltage change bigger than this!!!
+	variable absDeltaVtop=abs(Vtgn*(S.finx-S.startx)/(S.numptsx-1))
+	variable absDeltaVbtm=abs(Vbgn*(S.finx-S.startx)/(S.numptsx-1))
+	if(absDeltaVtop>KeithleyStepThreshold||absDeltaVbtm>KeithleyStepThreshold)
+		print "You will kill the device!!!"
+		return -1
+	endif
+
+	// Ramp to start without checks because checked above
+	rampK2400Voltage(keithleyIDtop, startTop, ramprate=rampraten)
+	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=rampraten)
+	rampK2400Voltage(instrIDy, starty, ramprate=rampratey)
+		
+	// Let gates settle 
+	sc_sleep(S.delayy*5)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, j=0, setpointn, setpointD, setpointTop,setpointBtm, setpointfd
+	do
+		setpointn = S.startx
+		setpointD = fixedD
+		setpointfd = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		
+		setpointTop=convertnDToVt(setpointn, setpointD)
+		setpointBtm=convertnDToVb(setpointn, setpointD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=rampraten)
+		rampK2400Voltage(instrIDy, setpointfd, ramprate=rampratey)
+		sc_sleep(S.delayy)
+		j=0
+		do
+			setpointn = S.startx + (j*(S.finx-S.startx)/(S.numptsx-1))
+			setpointTop=convertnDToVt(setpointn, setpointD)
+			setpointBtm=convertnDToVb(setpointn, setpointD)
+			setpointfd = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+			
+			setK2400Voltage(keithleyIDtop, setpointTop)
+			setK2400Voltage(keithleyIDbtm, setpointBtm)
+			sc_sleep(S.delayx)
+			RecordValues(S, i, j)
+			j+=1
+		while (j<S.numptsx)
+	i+=1
+	while (i<S.numptsy)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
+
 //////////////////////
 //2D "n&D map" scans//
 //////////////////////
+
+function Scan2K2400dANDn2D_reset(keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, delayn, rampraten, startD,finD,numptsD,delayD,ramprateD,reset_D[ y_label, comments, nosave]) //Units: mV
+	variable keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, delayn, rampraten, startD,finD,numptsD,delayD,ramprateD,nosave, reset_D
+	string y_label, comments
+	
+	//Two column vectors, Transpose(n,D) and Transpose(V_top,V_btm) can be converted to each other by a matrix A and its inverse B
+	//Specifically, n=A_nt*V_top+A_nb*V_btm and D=A_Dt*V_top+A_Db*V_btm. V_top=B_tn*n+B_tD*D and V_btm=B_bn*n+B_bD*D
+	//For our current device, the values of these convertion matrix elements are as below:
+	variable Vtgn=B_tn()
+	variable VtgD=B_tD() 
+	variable Vbgn=B_bn()
+	variable VbgD=B_bD()
+	//Convert the input-from-keyboard start/finish carrier density n and fixed D to start/finish V_top/V_btm 
+	//variable startTop,startBtm,FinTop,FinBtm
+	variable startTop=convertnDToVt(startn, startD)
+	variable startBtm=convertnDToVb(startn, startD)
+	variable finTop=convertnDToVt(finn, finD)
+	variable finBtm=convertnDToVb(finn, finD)
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "") 
+	//y_label = selectstring(paramisdefault(y_label), y_label, "Field /mT")
+
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=keithleyIDtop, startx=startD, finx=finD, numptsx=numptsD, delayx=delayD, rampratex=ramprateD, \
+							instrIDy=keithleyIDbtm, starty=startn, finy=finn, numptsy=numptsn, delayy=delayn, rampratey=rampraten, \
+	 						y_label=y_label, comments=comments)
+	 						
+	 						
+	//Security Check of using 'setK2400Voltage' instead of 'ramp'
+	variable KeithleyStepThreshold=40   //Never use 'setK2400Voltage' to make a gate voltage change bigger than this!!!
+	variable absDeltaVtop=abs(Vtgn*(S.finx-S.startx)/(S.numptsx-1))
+	variable absDeltaVbtm=abs(Vbgn*(S.finx-S.startx)/(S.numptsx-1))
+	if(absDeltaVtop>KeithleyStepThreshold||absDeltaVbtm>KeithleyStepThreshold)
+		print "You will kill the device!!!"
+		return -1
+	endif
+
+	// Check software limits and ramprate limits
+	// PreScanChecksKeithley(S, x_only=1)  
+	
+	// Ramp to start without checks because checked above
+	//rampK2400Voltage(S.instrIDx, startx, ramprate=S.rampratex)
+	rampK2400Voltage(keithleyIDtop, startTop, ramprate=rampraten)
+	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=ramprateD)
+
+		
+	// Let gates settle 
+	sc_sleep(S.delayy)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, j=0, setpointn, setpointD,setpointTop,setpointBtm
+	do	
+	
+		setpointD = startD
+		setpointn = startn + (i*(finn-startn)/(numptsn-1))
+		
+		setpointTop=convertnDToVt(setpointn, reset_D)
+		setpointBtm=convertnDToVb(setpointn, reset_D)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=rampraten)
+		
+		setpointTop=convertnDToVt(setpointn, setpointD)
+		setpointBtm=convertnDToVb(setpointn, setpointD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=ramprateD)
+		
+		sc_sleep(S.delayy)
+		j=0
+		do
+			setpointD = startD + (j*(finD-startD)/(numptsD-1))
+			setpointTop=convertnDToVt(setpointn, setpointD)
+			setpointBtm=convertnDToVb(setpointn, setpointD)
+			setK2400Voltage(keithleyIDtop, setpointTop)
+			setK2400Voltage(keithleyIDbtm, setpointBtm)
+			sc_sleep(S.delayx)
+			RecordValues(S, i, j)
+			j+=1
+		while (j<numptsD)
+	i+=1
+	while (i<numptsn)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
+
+
+function Scan2K2400nANDd2D_reset(keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, delayn, rampraten, startD,finD,numptsD,delayD,ramprateD, reset_n[ y_label, comments, nosave]) //Units: mV
+	variable keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, delayn, rampraten, startD,finD,numptsD,delayD,ramprateD,nosave, reset_n
+	string y_label, comments
+	
+	//Two column vectors, Transpose(n,D) and Transpose(V_top,V_btm) can be converted to each other by a matrix A and its inverse B
+	//Specifically, n=A_nt*V_top+A_nb*V_btm and D=A_Dt*V_top+A_Db*V_btm. V_top=B_tn*n+B_tD*D and V_btm=B_bn*n+B_bD*D
+	//For our current device, the values of these convertion matrix elements are as below:
+	variable Vtgn=B_tn()
+	variable VtgD=B_tD() 
+	variable Vbgn=B_bn()
+	variable VbgD=B_bD()
+	
+	//Convert the input-from-keyboard start/finish carrier density n and fixed D to start/finish V_top/V_btm 
+	//variable startTop,startBtm,FinTop,FinBtm
+	variable startTop=convertnDToVt(startn, startD)
+	variable startBtm=convertnDToVb(startn, startD)
+	variable finTop=convertnDToVt(finn, finD)
+	variable finBtm=convertnDToVb(finn, finD)
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "") 
+	//y_label = selectstring(paramisdefault(y_label), y_label, "Field /mT")
+
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=keithleyIDtop, startx=startn, finx=finn, numptsx=numptsn, delayx=delayn, rampratex=rampraten, \
+							instrIDy=keithleyIDbtm, starty=startD, finy=finD, numptsy=numptsD, delayy=delayD, rampratey=ramprateD, \
+	 						y_label=y_label, comments=comments)
+	 						
+	 						
+	//Security Check of using 'setK2400Voltage' instead of 'ramp'
+	variable KeithleyStepThreshold=40   //Never use 'setK2400Voltage' to make a gate voltage change bigger than this!!!
+	variable absDeltaVtop=abs(Vtgn*(S.finx-S.startx)/(S.numptsx-1))
+	variable absDeltaVbtm=abs(Vbgn*(S.finx-S.startx)/(S.numptsx-1))
+	if(absDeltaVtop>KeithleyStepThreshold||absDeltaVbtm>KeithleyStepThreshold)
+		print "You will kill the device!!!"
+		return -1
+	endif
+
+	// Check software limits and ramprate limits
+	// PreScanChecksKeithley(S, x_only=1)  
+	
+	// Ramp to start without checks because checked above
+	//rampK2400Voltage(S.instrIDx, startx, ramprate=S.rampratex)
+	rampK2400Voltage(keithleyIDtop, startTop, ramprate=rampraten)
+	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=ramprateD)
+
+		
+	// Let gates settle 
+	sc_sleep(S.delayy*5)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, j=0, setpointn, setpointD,setpointTop,setpointBtm
+	do
+		setpointn = S.startx
+		setpointD = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		setpointTop=convertnDToVt(reset_n, setpointD)
+		setpointBtm=convertnDToVb(reset_n, setpointD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=rampraten)
+		
+		setpointTop=convertnDToVt(setpointn, setpointD)
+		setpointBtm=convertnDToVb(setpointn, setpointD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=rampraten)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=rampraten)
+		sc_sleep(S.delayy)
+		j=0
+		do
+			setpointn = S.startx + (j*(S.finx-S.startx)/(S.numptsx-1))
+			setpointTop=convertnDToVt(setpointn, setpointD)
+			setpointBtm=convertnDToVb(setpointn, setpointD)
+			setK2400Voltage(keithleyIDtop, setpointTop)
+			setK2400Voltage(keithleyIDbtm, setpointBtm)
+			sc_sleep(S.delayx)
+			RecordValues(S, i, j)
+			j+=1
+		while (j<S.numptsx)
+	i+=1
+	while (i<S.numptsy)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
 
 //'Set' D at D_0, D_1, D_2,..., and do an n scan at each D value
 function Scan2K2400nANDd2D(keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, delayn, rampraten, startD,finD,numptsD,delayD,ramprateD,[ y_label, comments, nosave]) //Units: mV
@@ -956,7 +1249,7 @@ function Scan2K2400nANDd2D(keithleyIDtop,keithleyIDbtm,startn, finn, numptsn, de
 
 		
 	// Let gates settle 
-	sc_sleep(S.delayy*5)
+	sc_sleep(S.delayy)
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -1249,7 +1542,7 @@ function Scan_field_D_2D(keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numpts
 	setlS625fieldWait(S.instrIDy, starty )
 	
 	// Let gates settle 
-	sc_sleep(S.delayy*5)
+	sc_sleep(5)
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -1257,14 +1550,16 @@ function Scan_field_D_2D(keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numpts
 	// Main measurement loop
 	variable i=0, j=0, setpointx, setpointy,setpointTop,setpointBtm
 	do
+		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		setlS625fieldWait(S.instrIDy, setpointy)
+		
 		setpointx = S.startx
 		setpointTop=convertnDToVt(fixedn, setpointx)
 		setpointBtm=convertnDToVb(fixedn, setpointx)
-		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
-		setlS625field(S.instrIDy, setpointy)
 		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
 		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
-		setlS625fieldWait(S.instrIDy, setpointy, short_wait=1)
+		
+		
 		sc_sleep(S.delayy)
 		j=0
 		do
@@ -1292,6 +1587,108 @@ function Scan_field_D_2D(keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numpts
 	endif
 end
 
+
+function Scan_field_D_2D_reset(keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numptsD, delayD, ramprateD, magnetID, starty, finy, numptsy, delayy, reset_D, [rampratey, y_label, comments, nosave]) //Units: mV
+
+
+	variable keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numptsD, delayD, ramprateD, magnetID, starty, finy, numptsy, delayy, rampratey, nosave, reset_D
+	string y_label, comments
+	
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "") 
+	//sprintf x_label,"n (cm\S-2\M)"
+	y_label = selectstring(paramisdefault(y_label), y_label, "B (mT)")
+
+	variable startTop=convertnDToVt(fixedn, startD)
+	variable startBtm=convertnDToVb(fixedn, startD)
+	variable finTop=convertnDToVt(fixedn, finD)
+	variable finBtm=convertnDToVb(fixedn, finD)
+	
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=keithleyIDtop, startx=startD, finx=finD, numptsx=numptsD, delayx=delayD, rampratex=ramprateD, \
+							instrIDy=magnetID, starty=starty, finy=finy, numptsy=numptsy, delayy=delayy, rampratey=rampratey, \
+	 						y_label=y_label, comments=comments)
+
+	// Check software limits and ramprate limits
+	// PreScanChecksKeithley(S, x_only=1)  
+	// PreScanChecksMagnet(S, y_only=1)
+	
+	//Security Check of using 'setK2400Voltage' instead of 'ramp'
+	variable KeithleyStepThreshold=100   //Never use 'setK2400Voltage' to make a gate voltage change bigger than this!!!
+	variable absDeltaVtop=abs(B_tD()*(S.finx-S.startx)/(S.numptsx-1))
+	variable absDeltaVbtm=abs(B_bD()*(S.finx-S.startx)/(S.numptsx-1))
+	if(absDeltaVtop>KeithleyStepThreshold||absDeltaVbtm>KeithleyStepThreshold)
+		print "You will kill the device!!!"
+		return -1
+	endif
+
+	
+	// Ramp to start without checks because checked above
+	//rampK2400Voltage(S.instrIDx, startx, ramprate=S.rampratex)
+
+	rampK2400Voltage(keithleyIDtop, startTop, ramprate=S.rampratex)
+	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=S.rampratex)
+	
+	if (!paramIsDefault(rampratey))
+		setLS625rate(magnetID,rampratey)
+	endif
+	setlS625fieldWait(S.instrIDy, starty )
+	
+	// Let gates settle 
+	sc_sleep(5)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, j=0, setpointx, setpointy,setpointTop,setpointBtm
+	do
+		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		setlS625fieldWait(S.instrIDy, setpointy)
+		
+		setpointTop=convertnDToVt(fixedn, reset_D)
+		setpointBtm=convertnDToVb(fixedn, reset_D)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
+		
+		setpointx = S.startx
+		setpointTop=convertnDToVt(fixedn, setpointx)
+		setpointBtm=convertnDToVb(fixedn, setpointx)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
+		
+		
+		sc_sleep(S.delayy)
+		j=0
+		do
+			setpointx = S.startx + (j*(S.finx-S.startx)/(S.numptsx-1))
+			setpointTop=convertnDToVt(fixedn, setpointx)
+			setpointBtm=convertnDToVb(fixedn, setpointx)
+			setK2400Voltage(keithleyIDtop, setpointTop)
+			setK2400Voltage(keithleyIDbtm, setpointBtm)
+			
+//			rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
+//			rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
+		
+			sc_sleep(S.delayx)
+			RecordValues(S, i, j)
+			j+=1
+		while (j<S.numptsx)
+	i+=1
+	while (i<S.numptsy)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
 
 ////////////////
 //2D B-n scans//
@@ -1477,15 +1874,15 @@ function Scan_field_n_2D(keithleyIDtop,keithleyIDbtm,fixedD,startn, finn, numpts
 	// Main measurement loop
 	variable i=0, j=0, setpointx, setpointy,setpointTop,setpointBtm
 	do
+		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		setlS625field(S.instrIDy, setpointy)
+		
 		setpointx = S.startx		
 		setpointTop=convertnDToVt(setpointx, fixedD)
 		setpointBtm=convertnDToVb(setpointx, fixedD)
-		
-		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
-		setlS625field(S.instrIDy, setpointy)
 		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
 		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
-		setlS625fieldWait(S.instrIDy, setpointy, short_wait = 1)
+		setlS625fieldwait(S.instrIDy, setpointy)
 		sc_sleep(S.delayy)
 		j=0
 		do
@@ -1495,11 +1892,7 @@ function Scan_field_n_2D(keithleyIDtop,keithleyIDbtm,fixedD,startn, finn, numpts
 		
 			setK2400Voltage(keithleyIDtop, setpointTop)
 			setK2400Voltage(keithleyIDbtm, setpointBtm)
-		
-//			rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
-//			rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
-		
-		
+
 			sc_sleep(S.delayx)
 			RecordValues(S, i, j)
 			j+=1
@@ -1514,6 +1907,101 @@ function Scan_field_n_2D(keithleyIDtop,keithleyIDbtm,fixedD,startn, finn, numpts
 		 dowindow /k SweepControl
 	endif
 end
+
+
+function Scan_field_n_2D_reset(keithleyIDtop,keithleyIDbtm,fixedD,startn, finn, numptsn, delayn, rampraten, magnetID, starty, finy, numptsy, delayy, reset_n [rampratey, y_label, comments, nosave]) //Units: mV
+
+
+	variable keithleyIDtop,keithleyIDbtm,fixedD,startn, finn, numptsn, delayn, rampraten, magnetID, starty, finy, numptsy, delayy, rampratey, nosave, reset_n
+	string y_label, comments
+	
+	
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "") 
+	//sprintf x_label,"n (cm\S-2\M)"
+	y_label = selectstring(paramisdefault(y_label), y_label, "B (mT)")
+
+	//Two column vectors, Transpose(n,D) and Transpose(V_top,V_btm) can be converted to each other by a matrix A and its inverse B
+	//Specifically, n=A_nt*V_top+A_nb*V_btm and D=A_Dt*V_top+A_Db*V_btm. V_top=B_tn*n+B_tD*D and V_btm=B_bn*n+B_bD*D
+	//For our current device, the values of these convertion matrix elements are as below:	
+	variable Vtgn=B_tn()
+	variable VtgD=B_tD() 
+	variable Vbgn=B_bn()
+	variable VbgD=B_bD()
+	
+	
+	//Convert the input-from-keyboard start/finish carrier density n and fixed D to start/finish V_top/V_btm 
+	//variable startTop,startBtm,FinTop,FinBtm
+	variable startTop=convertnDToVt(startn, fixedD)
+	variable startBtm=convertnDToVb(startn, fixedD)
+	variable finTop=convertnDToVt(finn, fixedD)
+	variable finBtm=convertnDToVb(finn, fixedD)
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=keithleyIDtop, startx=startn, finx=finn, numptsx=numptsn, delayx=delayn, rampratex=rampraten, \
+							instrIDy=magnetID, starty=starty, finy=finy, numptsy=numptsy, delayy=delayy, rampratey=rampratey, \
+	 						y_label=y_label, comments=comments)
+
+
+	rampK2400Voltage(keithleyIDtop, startTop, ramprate=S.rampratex)
+	rampK2400Voltage(keithleyIDbtm, startBtm, ramprate=S.rampratex)
+	
+	if (!paramIsDefault(rampratey))
+		setLS625rate(magnetID,rampratey)
+	endif
+	setlS625fieldWait(S.instrIDy, starty )
+	
+	// Let gates settle 
+	sc_sleep(S.delayy)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, j=0, setpointx, setpointy,setpointTop,setpointBtm
+	do
+		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
+		setlS625field(S.instrIDy, setpointy)
+		setpointTop=convertnDToVt(reset_n, fixedD)
+		setpointBtm=convertnDToVb(reset_n, fixedD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
+		setlS625fieldwait(S.instrIDy, setpointy)
+		setpointx = S.startx		
+		setpointTop=convertnDToVt(setpointx, fixedD)
+		setpointBtm=convertnDToVb(setpointx, fixedD)
+		rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
+		rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
+		
+		sc_sleep(S.delayy)
+		j=0
+		do
+			setpointx = S.startx + (j*(S.finx-S.startx)/(S.numptsx-1))
+			setpointTop=convertnDToVt(setpointx, fixedD)
+			setpointBtm=convertnDToVb(setpointx, fixedD)
+		
+			setK2400Voltage(keithleyIDtop, setpointTop)
+			setK2400Voltage(keithleyIDbtm, setpointBtm)
+
+			sc_sleep(S.delayx)
+			RecordValues(S, i, j)
+			j+=1
+		while (j<S.numptsx)
+	i+=1
+	while (i<S.numptsy)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
+
 
 function ScanIPSMagnet(instrID, startx, finx, numptsx, delayx, [y_label, comments, nosave, fast]) 
 	variable instrID, startx, finx, numptsx, delayx,  nosave, fast
@@ -1967,7 +2455,7 @@ function Scan_VECfield(magnetIDX,magnetIDY,magnetIDZ, BTranslateX, BTranslateY, 
 	endif
 	print(BTranslateX+startB*sin(thetafromY*pi/180)*cos(alphafromX*pi/180))
 	print(BTranslateY+startB*cos(thetafromY*pi/180))
-	print( BTranslateZ+startB*sin(thetafromY*pi/180)*sin(alphafromX*pi/180))
+	print(BTranslateZ+startB*sin(thetafromY*pi/180)*sin(alphafromX*pi/180))
 	
 	setlS625field(magnetIDX, BTranslateX+startB*sin(thetafromY*pi/180)*cos(alphafromX*pi/180))   //BTranslateX/Y/Z are the results of calibrations.
 	setlS625field(magnetIDY, BTranslateY+startB*cos(thetafromY*pi/180))
@@ -2156,6 +2644,91 @@ function Scan_VECfield_Para(magnetIDX,magnetIDY,magnetIDZ, BTranslateX, BTransla
 		while (j<S.numptsx)
 	i+=1	
 	while (i<S.numptsy)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
+
+
+
+function ScanCorrectedLSZ(instrID, instrID_LSY, bperp0, bperp, startx, finx, numptsx, delayx, [y_label, comments, nosave, fast, bcompl]) //set fast=1 to run quickly
+	variable instrID, instrID_LSY, bperp0, bperp, startx, finx, numptsx, delayx,  nosave, fast, bcompl
+	string y_label, comments
+	
+	
+	variable ramprate, bperp_offset, ramprate_LSY
+	
+	if(paramisdefault(fast))
+		fast=0
+	endif
+	
+	if(paramisdefault(bcompl))
+		bcompl=5500
+	endif
+	
+	
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "")
+	y_label = selectstring(paramisdefault(y_label), y_label, "")
+	
+
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=instrID, startx=startx, finx=finx, numptsx=numptsx, delayx=delayx, \
+	 						y_label=y_label, comments=comments)
+							
+
+	// Check software limits and ramprate limits
+	// PreScanChecksMagnet(S)
+	ramprate = getLS625rate(S.instrIDx)
+	ramprate_LSY = getLS625rate(instrID_LSY)
+	
+	// Ramp in plane field to start without checks because checked above
+	setlS625field(S.instrIDx, S.startx)
+	
+	bperp_offset = S.startx*sin(-1.8744581973276866*pi/180)
+	setlS625field(instrID_LSY, bperp0 - bperp_offset + bperp)
+	
+	setlS625fieldWait(S.instrIDx, S.startx)
+	setlS625fieldWait(instrID_LSY, bperp0 - bperp_offset + bperp)
+	
+	// Let gates settle 
+	sc_sleep(S.delayy*5)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, setpointx
+	do
+		setpointx = S.startx + (i*(S.finx-S.startx)/(S.numptsx-1))
+		bperp_offset = setpointx*sin(-1.8744581973276866*pi/180)
+		if(fast==1)
+			if (abs(setpointx) >= bcompl)
+				setlS625fieldwait(S.instrIDx, setpointx, short_wait = 1) 
+				setlS625fieldwait(instrID_LSY, bperp0 - bperp_offset + bperp, short_wait = 1) 
+				sc_sleep(S.delayx)
+			else
+				setlS625field(instrID_LSY, bperp0 - bperp_offset + bperp)  
+				setlS625field(S.instrIDx, setpointx) 
+				sc_sleep(max(S.delayx+60*abs(finx-startx)/numptsx/ramprate, S.delayx+-1*sin(-1.8744581973276866*pi/180)*60*abs(finx-startx)/numptsx/ramprate_LSY))
+			endif
+		else
+			setlS625fieldwait(S.instrIDx, setpointx) 
+			setlS625fieldwait(instrID_LSY, bperp0 - bperp_offset + bperp) 
+			sc_sleep(S.delayx)
+		endif
+		RecordValues(S, i, i)
+		i+=1
+	while (i<S.numptsx)
 	
 	// Save by default
 	if (nosave == 0)

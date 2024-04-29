@@ -38,18 +38,23 @@ function openFastDACconnection(instrID, visa_address, [verbose,numDACCh,numADCCh
 	variable status = viOpenDefaultRM(localRM) // open local copy of resource manager
 	if(status < 0)
 		VISAerrormsg("open FastDAC connection:", localRM, status)
-		abort
-	endif
-	
-	string comm = ""
-	sprintf comm, "name=FastDAC,instrID=%s,visa_address=%s" instrID, visa_address
-	string options
-	if(optical)
- 		options = "baudrate=1750000,databits=8,parity=0,test_query=*IDN?"  // For Optical
+		killvisa()
+		print("Killed visa")
+		asleep(15)
+		killvisa()
+		print("Killed visa")
+		sc_openInstrConnections(0)
 	else
-		options = "baudrate=57600,databits=8,parity=0,test_query=*IDN?"  // For USB
-	endif
-	openVISAinstr(comm, options=options, localRM=localRM, verbose=verbose)
+		string comm = ""
+		sprintf comm, "name=FastDAC,instrID=%s,visa_address=%s" instrID, visa_address
+		string options
+		if(optical)
+ 			options = "baudrate=1750000,databits=8,parity=0,test_query=*IDN?"  // For Optical
+		else
+			options = "baudrate=57600,databits=8,parity=0,test_query=*IDN?"  // For USB
+		endif
+		openVISAinstr(comm, options=options, localRM=localRM, verbose=verbose)
+	endif 
 	
 	// fill info into "sc_fdackeys"
 	if(!paramisdefault(numDACCh) && !paramisdefault(numADCCh))

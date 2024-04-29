@@ -471,7 +471,7 @@ function ScanFastDacSlow(instrID, start, fin, channels, numpts, delay, ramprate,
 	RampStartFD(S, ignore_lims=1)
 
 	// Let gates settle 
-	sc_sleep(1)
+	sc_sleep(15)
 
 	// Make Waves and Display etc
 	InitializeScan(S)
@@ -925,7 +925,7 @@ function Scank2400(instrID, startx, finx, channelsx, numptsx, delayx, rampratex,
 	rampK2400Voltage(S.instrIDx, startx, ramprate = rampratex)
 	
 	// Let gates settle 
-	sc_sleep(2)
+	sc_sleep(5)
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -1327,8 +1327,8 @@ end
 
 
 
-function ScanLS625Magnet(instrID, startx, finx, numptsx, delayx, [y_label, comments, nosave, fast]) //set fast=1 to run quickly
-	variable instrID, startx, finx, numptsx, delayx,  nosave, fast
+function ScanLS625Magnet(instrID, startx, finx, numptsx, delayx, [y_label, comments, nosave, fast, bcompl]) //set fast=1 to run quickly
+	variable instrID, startx, finx, numptsx, delayx,  nosave, fast, bcompl
 	string y_label, comments
 	
 	
@@ -1338,6 +1338,9 @@ function ScanLS625Magnet(instrID, startx, finx, numptsx, delayx, [y_label, comme
 		fast=0
 	endif
 	
+	if(paramisdefault(bcompl))
+		bcompl=500
+	endif
 	
 	
 	// Reconnect instruments
@@ -1373,8 +1376,12 @@ function ScanLS625Magnet(instrID, startx, finx, numptsx, delayx, [y_label, comme
 	do
 		setpointx = S.startx + (i*(S.finx-S.startx)/(S.numptsx-1))
 		if(fast==1)
-			setlS625field(S.instrIDx, setpointx) 
-			sc_sleep(max(S.delayx, (S.delayx+60*abs(finx-startx)/numptsx/ramprate)))
+			if (abs(setpointx) >= bcompl)
+				setlS625fieldwait(S.instrIDx, setpointx, short_wait = 1) 
+			else
+				setlS625field(S.instrIDx, setpointx) 
+				sc_sleep(max(S.delayx, (S.delayx+60*abs(finx-startx)/numptsx/ramprate)))
+			endif
 		else
 			setlS625fieldwait(S.instrIDx, setpointx) 
 //			sc_sleep(S.delayx)
@@ -1633,7 +1640,7 @@ function ScanK2400LS625Magnet2D(keithleyID, startx, finx, numptsx, delayx, rampr
 		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
 		setlS625field(S.instrIDy, setpointy)
 		rampK2400Voltage(S.instrIDx, setpointx, ramprate=S.rampratex)
-      setlS625fieldWait(S.instrIDy, setpointy, short_wait = 1)
+      setlS625fieldWait(S.instrIDy, setpointy)
 		sc_sleep(S.delayy)
 		j=0
 		do
@@ -1643,6 +1650,7 @@ function ScanK2400LS625Magnet2D(keithleyID, startx, finx, numptsx, delayx, rampr
 			RecordValues(S, i, j)
 			j+=1
 		while (j<S.numptsx)
+		asleep(1)
 	i+=1
 	while (i<S.numptsy)
 	
