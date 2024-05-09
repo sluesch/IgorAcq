@@ -660,7 +660,7 @@ function sc_fetchSQLDataTest()
 	//string sqlquery = "SELECT t, time FROM qdot.lksh370.channel_data WHERE ch_idx=2 AND time > TIMESTAMP '2020-01-13 00:00:00.00'"
 	//string sqlquery = "SELECT * FROM INFORMATION_SCHEMA.COLUMNS"
 	//string sqlquery = "SELECT ch_idx, time, t FROM (SELECT ch_idx, time, t, ROW_NUMBER() OVER (PARTITION BY ch_idx ORDER BY time DESC) rn FROM qdot.lksh370.channel_data) tmp WHERE rn = 1;"
-	//print sqlquery
+	print sqlquery
 	SQLHighLevelOp/CSTR={connStr,SQL_DRIVER_NOPROMPT}/o/e=1 sqlquery
 end
 

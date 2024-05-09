@@ -2133,7 +2133,9 @@ function InitScanController([configFile])
 		abort "Data path not defined!\n"
 	endif
 
-	string /g sc_colormap = "VioletOrangeYellow"
+//	string /g sc_colormap = "VioletOrangeYellow"
+	string /g sc_colormap = "Terrain256"
+	
 	string /g slack_url =  "https://hooks.slack.com/services/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" // url for slack alert
 	variable /g sc_save_time = 0 // this will record the last time an experiment file was saved
 

@@ -926,6 +926,7 @@ function Scank2400(instrID, startx, finx, channelsx, numptsx, delayx, rampratex,
 	
 	// Let gates settle 
 	sc_sleep(5)
+
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -939,6 +940,54 @@ function Scank2400(instrID, startx, finx, channelsx, numptsx, delayx, rampratex,
 		else
 		   setK2400Voltage(S.instrIDx, setpointx)
 		endif
+		sc_sleep(S.delayx)
+		RecordValues(S, i, i)
+		i+=1
+	while (i<S.numptsx)
+	
+	// Save by default
+	if (nosave == 0)
+		EndScan(S=S)
+	else
+		 dowindow /k SweepControl
+	endif
+end
+
+function Scank2400ramp(instrID, startx, finx, channelsx, numptsx, delayx, rampratex, [y_label, comments, nosave]) //Units: mV
+	variable instrID, startx, finx, numptsx, delayx, rampratex,  nosave
+	string channelsx, y_label, comments
+	//abort "WARNING: This scan has not been tested with an instrument connected. Remove this abort and test the behavior of the scan before running on a device!"
+	
+	// Reconnect instruments
+	sc_openinstrconnections(0)
+	
+	// Set defaults
+	comments = selectstring(paramisdefault(comments), comments, "")
+	y_label = selectstring(paramisdefault(y_label), y_label, "")
+	
+	// Initialize ScanVars
+	struct ScanVars S
+	initScanVars(S, instrIDx=instrID, startx=startx, finx=finx, channelsx=channelsx, numptsx=numptsx, delayx=delayx, rampratex=rampratex, \
+	 						y_label=y_label, x_label = "k2400", comments=comments)
+
+	// Check software limits and ramprate limits
+	// PreScanChecksKeithley(S)  
+	
+	// Ramp to start without checks because checked above
+	rampK2400Voltage(S.instrIDx, startx)
+	
+	// Let gates settle 
+	sc_sleep(S.delayx*20)
+	
+	// Make waves and graphs etc
+	initializeScan(S)
+
+	// Main measurement loop
+	variable i=0, setpointx
+	do
+		setpointx = S.startx + (i*(S.finx-S.startx)/(S.numptsx-1))
+		rampK2400Voltage(S.instrIDx, setpointx, ramprate=S.rampratex)
+//		setK2400Voltage(S.instrIDx, setpointx)
 		sc_sleep(S.delayx)
 		RecordValues(S, i, i)
 		i+=1
@@ -1619,6 +1668,11 @@ function ScanK2400LS625Magnet2D(keithleyID, startx, finx, numptsx, delayx, rampr
 	// PreScanChecksKeithley(S, x_only=1)  
 	// PreScanChecksMagnet(S, y_only=1)
 	
+	if (!paramIsDefault(rampratey))
+		setLS625rate(magnetID,rampratey)
+	endif
+	setlS625field(S.instrIDy, starty )
+	
 	// Ramp to start without checks because checked above
 	rampK2400Voltage(S.instrIDx, startx, ramprate=S.rampratex)
 	
@@ -1640,7 +1694,7 @@ function ScanK2400LS625Magnet2D(keithleyID, startx, finx, numptsx, delayx, rampr
 		setpointy = S.starty + (i*(S.finy-S.starty)/(S.numptsy-1))
 		setlS625field(S.instrIDy, setpointy)
 		rampK2400Voltage(S.instrIDx, setpointx, ramprate=S.rampratex)
-      setlS625fieldWait(S.instrIDy, setpointy)
+		setlS625fieldWait(S.instrIDy, setpointy)
 		sc_sleep(S.delayy)
 		j=0
 		do

@@ -594,12 +594,12 @@ function Scan_D(instrIDx,instrIDy,fixedn,startD,finD,numptsD,delayD,ramprateD, [
 	// PreScanChecksKeithley(S)  
 	S.is2d=0
 	// Ramp to start without checks because checked above
-
 	rampK2400Voltage(S.instrIDx, convertnDToVt(fixedn, startD), ramprate=ramprateD)
 	rampK2400Voltage(S.instrIDy, S.starty, ramprate=ramprateD)	
 	
 	// Let gates settle 
 	sc_sleep(4)
+
 	
 	// Make waves and graphs etc
 	initializeScan(S)
@@ -1569,9 +1569,6 @@ function Scan_field_D_2D(keithleyIDtop,keithleyIDbtm,fixedn,startD, finD, numpts
 			setK2400Voltage(keithleyIDtop, setpointTop)
 			setK2400Voltage(keithleyIDbtm, setpointBtm)
 			
-//			rampK2400Voltage(keithleyIDtop, setpointTop, ramprate=S.rampratex)
-//			rampK2400Voltage(keithleyIDbtm, setpointBtm, ramprate=S.rampratex)
-		
 			sc_sleep(S.delayx)
 			RecordValues(S, i, j)
 			j+=1

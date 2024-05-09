@@ -69,6 +69,7 @@ function openLS625connection(instrVarName, visa_address, amps_per_tesla, max_fie
    string options = "baudrate=57600,databits=7,parity=1,test_query=*IDN?"
 //	string options = "test_query=*IDN?"	
 
+
 	openVISAinstr(comm, options=options, localRM=localRM, verbose=verbose)
 
 	nvar localID = $(instrVarName)
@@ -184,7 +185,7 @@ function setLS625current(instrID,output) // Units: A
 	if (abs(output) > maxf*apt/1000)
 		print "Max current is "+num2str(maxf*apt/1000)+" A"
 	else
-		cmd = "SETI "+num2str(output, "%.15f")  // Ensure does not send e.g. "1e-4" instead of "0.0001"
+		cmd = "SETI "+num2str(output, "%.15f")        // Ensure does not send e.g. "1e-4" instead of "0.0001"
 		writeInstr(instrID, cmd+"\r\n")
 	endif
 	
@@ -210,8 +211,7 @@ end
 function setLS625fieldWait(instrID,output, [short_wait])
 	// Set short_wait = 1 if you want the waiting to be a very tight loop (i.e. Useful if trying to ramp very short distances quickly)
 	variable instrID, output, short_wait
-//	print("Going to field")
-//	print(output)
+
 	setLS625field(instrID,output)
 	variable start_time = stopmsTimer(-2)
 	do
